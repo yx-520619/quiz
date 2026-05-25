@@ -754,6 +754,12 @@ h1, h2, h3, .font-display {
         <div class="file-name" id="fileName" style="display:none"></div>
       </div>
 
+      <div id="savedQuizBanner" style="display:none; margin-top:16px; padding:14px 20px; background:var(--accent-light); border-radius:var(--radius-sm); text-align:center;">
+        <span style="font-weight:600;color:var(--ink);">上次已加载 <strong id="savedQCount">0</strong> 道题</span>
+        <button class="btn btn-accent btn-sm" onclick="resumeSavedQuiz()" style="margin-left:12px;">继续答题</button>
+        <button class="btn btn-secondary btn-sm" onclick="clearSavedQuiz()" style="margin-left:8px;">清除记录</button>
+      </div>
+
       <div id="errorMsg" class="error-msg"></div>
 
       <!-- Preview after parsing -->
@@ -988,440 +994,219 @@ function letterToIndex (s) {
 }
 
 function parseTextFormat (text) {
-  // ── First, check for tab-delimited format ──
-  const lines = text.split('\n');
-  if (lines.some(l => l.includes('\t'))) {
-    return parseTabFormat(text, []);
-  }
+  // ── Step 0: Normalize －──
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = normalized.split('\n');
 
-  // ── Detect compact one-line format ──
-  // Pattern: "1、题目___。A opt1B opt2C opt3D opt4答案：X"
-  const nonEmptyLines = lines.filter(l => l.trim());
-  if (nonEmptyLines.length === 0) return [];
-
-  // Check how many lines match the compact one-line pattern
-  const compactPattern = /^\d+[、.．]\s*.+答案[：:]/;
-  let compactMatches = 0;
-  for (const line of nonEmptyLines) {
-    if (compactPattern.test(line.trim())) compactMatches++;
-  }
-
-  // If most non-empty lines match compact format, use compact parser
-  if (compactMatches >= nonEmptyLines.length * 0.5 && compactMatches >= 1) {
-    return parseCompactFormat(text);
-  }
-
-  // ── Otherwise use standard section-based parsing ──
-  const sectionTypes = [];
-  const sectionPatterns = [
-    { regex: /(?:^|\n)\s*[一二三四五六七八九十]+[、.．]\s*单[项选]|(?:^|\n)\s*单[项选择]题/i, type: 'single' },
-    { regex: /(?:^|\n)\s*[一二三四五六七八九十]+[、.．]\s*多[项选]|(?:^|\n)\s*多[项选择]题/i, type: 'multiple' },
-    { regex: /(?:^|\n)\s*[一二三四五六七八九十]+[、.．]\s*判[断]|(?:^|\n)\s*判断题/i, type: 'truefalse' },
-    { regex: /(?:^|\n)\s*[一二三四五六七八九十]+[、.．]\s*填[空]|(?:^|\n)\s*填空题/i, type: 'fillblank' },
-    { regex: /(?:^|\n)\s*[一二三四五六七八九十]+[、.．]\s*简[答]|(?:^|\n)\s*简答题/i, type: 'shortanswer' },
+  // ── Step 1: Detect section type per line ──
+  const typeZones = [];
+  const typePatterns = [
+    { regex: /单[项选]|单选题/i, type: 'single' },
+    { regex: /多[项选]|多选题/i, type: 'multiple' },
+    { regex: /判[断]|判断题/i, type: 'truefalse' },
+    { regex: /填[空]|填空题/i, type: 'fillblank' },
+    { regex: /简[答]|简答题/i, type: 'shortanswer' },
   ];
-  for (const sp of sectionPatterns) {
-    const m = text.match(sp.regex);
-    if (m) sectionTypes.push({ type: sp.type, pos: m.index || 0 });
+  let currentType = 'single';
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].trim();
+    if (/^[一二三四五六七八九十]+[、.．]/.test(l)) {
+      for (const tp of typePatterns) {
+        if (tp.regex.test(l)) { currentType = tp.type; break; }
+      }
+    }
+    typeZones.push(currentType);
   }
-  sectionTypes.sort((a, b) => a.pos - b.pos);
 
-  return parseLineFormat(text, sectionTypes);
-}
+  // ── Step 2: Tab-delimited check ──
+  const hasTabs = lines.some(l => l.includes('\t'));
 
-// ── Compact one-line format parser ──
-// Format: "1、题目_____。A opt1B opt2C opt3D opt4答案：C"
-function parseCompactFormat (text) {
+  // ── Step 3: Build chunks using numbering as boundaries ──
+  const chunks = [];
+  let buf = [], bufType = 'single';
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const numbered = /^\d+[、.．)\s]/.test(line);
+
+    if (numbered && buf.length > 0) {
+      chunks.push({ lines: buf, type: bufType });
+      buf = [];
+    }
+
+    if (numbered) {
+      buf.push(line);
+      bufType = typeZones[i];
+    } else if (buf.length > 0 && line) {
+      buf.push(line);
+    } else if (!line && buf.length > 0) {
+      chunks.push({ lines: buf, type: bufType });
+      buf = [];
+    }
+  }
+  if (buf.length > 0) chunks.push({ lines: buf, type: bufType });
+
+  // ── Step 4: Parse each chunk ──
   const questions = [];
-  const lines = text.split('\n');
   let qNum = 0;
 
-  function getSectionTypeFromLine(line) {
-    if (/单[项选]|单选题/i.test(line)) return 'single';
-    if (/多[项选]|多选题/i.test(line)) return 'multiple';
-    if (/判[断]|判断题/i.test(line)) return 'truefalse';
-    if (/填[空]|填空题/i.test(line)) return 'fillblank';
-    if (/简[答]|简答题/i.test(line)) return 'shortanswer';
-    return 'single';
-  }
+  for (const chunk of chunks) {
+    if (chunk.lines.length === 0) continue;
+    const first = chunk.lines[0].trim();
 
-  let currentType = 'single';
+    // Skip section headers
+    if (/^[一二三四五六七八九十]+[、.．]/.test(first) &&
+        /(?:单|多|判|填|简)/i.test(first)) continue;
 
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) continue;
+    const qType = chunk.type;
+    const compact = chunk.lines.join(' ');
 
-    // Section header
-    if (/^[一二三四五六七八九十]+[、.．]/.test(line) &&
-        /(?:单[项选]|多[项选]|判断|填空|简答)/i.test(line)) {
-      currentType = getSectionTypeFromLine(line);
-      continue;
+    // ── Extract answer ──
+    let answer = null;
+
+    // A: Explicit 答案： or 正确答案：
+    const ansM = compact.match(/(?:答案|正确答案|正确选项|参考答案)[：:是为]\s*(.+?)(?=\s*(?:解析|解释)[：:]|\s*$)/);
+    if (ansM) answer = ansM[1].trim();
+
+    // Strip answer from all lines in chunk so it won't appear in question text
+    if (answer !== null) {
+      for (let li = 0; li < chunk.lines.length; li++) {
+        chunk.lines[li] = chunk.lines[li].replace(/(?:答案|正确答案|正确选项|参考答案)[：:是为]\s*.+$/, '').trim();
+      }
+      // Remove empty lines caused by stripping
+      chunk.lines = chunk.lines.filter(l => l.length > 0);
+      if (chunk.lines.length === 0) continue;
     }
 
-    // Must start with a number
-    if (!/^\d+[、.．]/.test(line)) continue;
-
-    // Find 答案 position
-    const ansIdx = line.search(/答案[：:]/);
-    const answer = ansIdx >= 0 ? line.substring(ansIdx).replace(/^答案[：:]\s*/, '').trim() : null;
-    const beforeAnswer = ansIdx >= 0 ? line.substring(0, ansIdx) : line;
-
-    // Remove question number
-    const noNum = beforeAnswer.replace(/^\d+[、.．]\s*/, '');
-
-    // Find where options start: first standalone [A-H] followed by space or Chinese
-    // after the question part (which ends with 。or _____ or _____。）
-    let optionsBlock = '';
-    let qText = noNum;
-
-    // Strategy: find the pattern "[A-H] " (letter + space) that marks the first option
-    // This should appear after the question content ends
-    const optStartMatch = noNum.match(/[。》」』］】）\)]$/);
-    if (optStartMatch) {
-      const endPos = optStartMatch.index + optStartMatch[0].length;
-      const afterEnd = noNum.substring(endPos);
-      const firstOpt = afterEnd.match(/([A-H])\s/);
-      if (firstOpt && firstOpt.index !== undefined) {
-        const optStart = endPos + firstOpt.index;
-        qText = noNum.substring(0, optStart).trim();
-        optionsBlock = noNum.substring(optStart);
+    // B: Standalone letter after options (last meaningful line)
+    if (!answer) {
+      for (let i = chunk.lines.length - 1; i >= 0; i--) {
+        const ln = chunk.lines[i].trim();
+        if (/^[A-H]$/i.test(ln)) { answer = ln.toUpperCase(); break; }
+        if (ln.length > 0 && !/^答案/.test(ln)) break; // only match immediate last line
       }
     }
 
-    // Fallback: find first [A-H] followed by space that's after position ~10
-    if (!optionsBlock) {
-      const optMarkers = [];
-      const re = /([A-H])\s/g;
-      let m;
-      while ((m = re.exec(noNum)) !== null) {
-        optMarkers.push({ letter: m[1], pos: m.index });
+    // C: Tab last column
+    if (!answer && hasTabs && first.includes('\t')) {
+      const cols = first.split('\t').map(c => c.trim());
+      const lc = cols[cols.length - 1];
+      if (/^[A-H]$/i.test(lc)) answer = lc.toUpperCase();
+    }
+
+    // D: Inline bracket ( B )
+    if (!answer) {
+      const bm = first.match(/[（(]\s*([A-H]+)\s*[）)]/);
+      if (bm) answer = bm[1];
+    }
+
+    // ── Extract options ──
+    let options = [];
+
+    // Strategy A: Per-line options
+    for (const ln of chunk.lines) {
+      const pm = ln.trim().match(/^([A-H])[.、．)\s]+(.+)/);
+      if (pm) options.push({ letter: pm[1], text: pm[2].trim() });
+    }
+
+    // Strategy B: Compact inline in any line
+    if (options.length < 2) {
+      for (const ln of chunk.lines) {
+        const ao = ln.trim().match(/[A-H][.、．)\s]+\S+/g);
+        if (ao && ao.length >= 2) {
+          const parts = ln.trim().split(/\s*(?=[A-H][.、．)\s]+)/);
+          for (const part of parts) {
+            const pm = part.match(/^([A-H])[.、．)\s]+(.+)/);
+            if (pm) options.push({ letter: pm[1], text: pm[2].trim() });
+          }
+          if (options.length >= 2) break;
+        }
       }
-      // Options typically start with A, then B, C, D in sequence
-      // Find the sequence A, B, C, D
-      for (let i = 0; i < optMarkers.length - 1; i++) {
-        const curr = optMarkers[i];
-        const next = optMarkers[i + 1];
-        if (curr.letter === 'A' && next.letter === 'B') {
-          qText = noNum.substring(0, curr.pos).trim();
-          optionsBlock = noNum.substring(curr.pos);
+    }
+
+    // Strategy C: Tab columns
+    if (options.length < 2 && hasTabs && first.includes('\t')) {
+      const cols = first.split('\t').map(c => c.trim());
+      const endCol = (answer && /^[A-H]$/i.test(cols[cols.length - 1])) ? cols.length - 1 : cols.length;
+      for (let ci = 2; ci < endCol; ci++) {
+        const c = cols[ci];
+        const pm = c.match(/^([A-H])[.、．)\s]?(.+)/);
+        if (pm) options.push({ letter: pm[1], text: pm[2].trim() });
+        else if (/^[A-H]$/.test(c)) options.push({ letter: c, text: c });
+      }
+    }
+
+    // Re-read first line after answer stripping
+    const firstClean = chunk.lines[0].trim();
+
+    // ── Extract question text ──
+    let qText = firstClean.replace(/^\d+[.、．)\s]+/, '').trim();
+
+    // If options exist inline in qText, split them out
+    if (options.length >= 2) {
+      for (const opt of options) {
+        const esc = opt.letter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(esc + '[.、．)\\s]');
+        const m = qText.match(re);
+        if (m && m.index !== undefined && m.index > 0) {
+          qText = qText.substring(0, m.index).trim();
           break;
         }
       }
     }
 
-    // Parse options from compact block
-    const options = [];
-    if (optionsBlock) {
-      const optRegex = /([A-H])\s*(.+?)(?=[A-H]\s|$)/g;
-      let m;
-      while ((m = optRegex.exec(optionsBlock)) !== null) {
-        options.push({ letter: m[1], text: m[2].trim() });
-      }
-    }
+    // Clean: remove trailing lone letter
+    qText = qText.replace(/\s*[A-H]\s*$/, '').trim();
 
-    if (options.length < 2) continue;
+    // ── Determine type ──
+    let finalType = qType;
 
-    // Determine type
-    let finalType = currentType;
-    if (currentType === 'single' && options.length === 2) {
-      const optsText = options.map(o => o.text);
-      if ((optsText[0] === '正确' || optsText[0] === '对' || optsText[0] === '√') &&
-          (optsText[1] === '错误' || optsText[1] === '错' || optsText[1] === '×')) {
+    // True/false from options
+    if (options.length === 2) {
+      const t = options.map(o => o.text);
+      if ((t[0] === '正确' || t[0] === '对' || t[0] === '√') &&
+          (t[1] === '错误' || t[1] === '错' || t[1] === '×')) {
         finalType = 'truefalse';
       }
     }
 
-    const normalizedAns = normalizeAnswer(answer);
-    const finalAnswer = normalizedAns || [0];
-    const cleanOpts = options.map((o, i) => ({
-      letter: LETTERS[i],
-      text: o.text.replace(/^[A-H][.、．)\s]+/, '').trim()
-    }));
-
-    qNum++;
-    questions.push({
-      id: qNum, type: finalType,
-      text: qText || '(题目内容)',
-      options: cleanOpts, answer: finalAnswer, explanation: ''
-    });
-  }
-
-  return questions;
-}
-
-// ── Tab-delimited parser (docx table extraction) ──
-function parseTabFormat (text, sectionTypes) {
-  const questions = [];
-  const lines = text.split('\n');
-  let qNum = 0;
-  let currentSection = 'single';
-
-  function getSectionType(pos) {
-    for (let i = sectionTypes.length - 1; i >= 0; i--) {
-      if (sectionTypes[i].pos <= pos) return sectionTypes[i].type;
-    }
-    return 'single';
-  }
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-
-    if (/^[一二三四五六七八九十]+[、.．]/.test(trimmed) &&
-        /(?:单[项选]|多[项选]|判断|填空|简答)/i.test(trimmed)) {
-      currentSection = getSectionType(text.indexOf(trimmed));
-      continue;
+    // Multi from answer
+    if (finalType === 'single' && answer) {
+      const ca = answer.replace(/[,，、\s]+/g, '').toUpperCase();
+      if (ca.length > 1 && /^[A-Z]+$/.test(ca)) finalType = 'multiple';
     }
 
-    const cols = trimmed.split('\t').map(c => c.trim()).filter(Boolean);
-    if (cols.length < 2) continue;
-
-    const numMatch = cols[0].match(/^(\d+)/);
-    if (!numMatch) continue;
-
-    const qText = cols[1] || '';
-
-    // Last column: check if it's a standalone answer letter
-    const lastCol = cols[cols.length - 1];
-    let answerCol = null;
-    if (/^[A-H]$/i.test(lastCol)) {
-      answerCol = cols.length - 1;
-    }
-
-    // Parse option columns (excluding number, question, and answer)
-    const options = [];
-    const endIdx = answerCol !== null ? answerCol : cols.length;
-    for (let i = 2; i < endIdx; i++) {
-      const c = cols[i];
-      let optLetter, optText;
-      if (/^[A-H][.、．)\s]/.test(c)) {
-        const pm = c.match(/^([A-H])[.、．)\s]+(.+)/);
-        if (pm) { optLetter = pm[1]; optText = pm[2].trim(); }
-        else { optLetter = c[0]; optText = c.substring(1).trim(); }
-      } else if (/^[A-H]$/.test(c)) {
-        optLetter = c;
-        optText = c;
-      } else {
-        continue; // skip non-option columns
-      }
-      if (optLetter && optText) {
-        options.push({ letter: optLetter, text: optText.replace(/^[A-H][.、．)\s]+/, '').trim() || optText });
-      }
-    }
-
-    if (options.length >= 2) {
-      const answer = answerCol !== null ? cols[answerCol] : null;
-      const cleanOpts = options.map((o, i) => ({
-        letter: LETTERS[i],
-        text: o.text
-      }));
-      const normalizedAns = normalizeAnswer(answer);
-      const finalAnswer = normalizedAns || [0];
-      const qType = currentSection === 'fillblank' || currentSection === 'shortanswer' ? 'single' : currentSection;
-      const finalType = qType === 'multiple' ? 'multiple' : 'single';
-
-      qNum++;
-      questions.push({
-        id: qNum, type: finalType,
-        text: qText || '(题目内容)',
-        options: cleanOpts, answer: finalAnswer, explanation: ''
-      });
-    }
-  }
-  return questions;
-}
-
-// ── Line-based parser ──
-function parseLineFormat (text, sectionTypes) {
-  const questions = [];
-
-  function getSectionType(pos) {
-    for (let i = sectionTypes.length - 1; i >= 0; i--) {
-      if (sectionTypes[i].pos <= pos) return sectionTypes[i].type;
-    }
-    return 'single';
-  }
-
-  // ── Step 1: Split text into question blocks ──
-  const lines = text.split('\n');
-  const blocks = [];
-  let currentBlock = [];
-  let inQuestion = false;
-  let pendingNum = null; // question number on its own line
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) {
-      if (currentBlock.length) { blocks.push(currentBlock); currentBlock = []; }
-      inQuestion = false;
-      pendingNum = null;
-      continue;
-    }
-
-    // Question number alone on a line (e.g., "1" or "1.")
-    if (!inQuestion && /^(\d+)[.、．)]?\s*$/.test(line)) {
-      pendingNum = line;
-      continue;
-    }
-
-    const qStart = /^(\d+)[.、．)\s]/.test(line);
-    const optLine = /^[A-H][.、．)\s]/.test(line);
-    const ansLine = /^(?:答案|正确答案|正确选项|参考答案)[：:是为]\s*/i.test(line);
-    // Standalone answer letter: "B" or "A" on its own line
-    const standaloneLetter = /^[A-H]$/i.test(line);
-
-    if (qStart && !optLine) {
-      if (currentBlock.length) blocks.push(currentBlock);
-      currentBlock = [line];
-      inQuestion = true;
-      pendingNum = null;
-    } else if (inQuestion) {
-      // If we see a standalone answer letter at the end of a block
-      if (standaloneLetter && currentBlock.length >= 2 && !ansLine) {
-        currentBlock.push('答案：' + line.toUpperCase());
-      } else {
-        currentBlock.push(line);
-      }
-    } else if (pendingNum && !optLine && !ansLine) {
-      // Previous line was a number, this is the question text
-      currentBlock = [pendingNum + ' ' + line];
-      inQuestion = true;
-      pendingNum = null;
-    } else {
-      if (currentBlock.length) blocks.push(currentBlock);
-      currentBlock = [line];
-      pendingNum = null;
-    }
-  }
-  if (currentBlock.length) blocks.push(currentBlock);
-
-  // ── Step 2: Parse each block into a question ──
-  let qNum = 0;
-  for (const block of blocks) {
-    if (block.length === 0) continue;
-    const firstLine = block[0].trim();
-
-    // Skip section headers
-    if (/^[一二三四五六七八九十]+[、.．]/.test(firstLine) &&
-        /(?:单[项选]|多[项选]|判断|填空|简答)/i.test(firstLine)) continue;
-
-    // Calculate position for section type lookup
-    const pos = text.indexOf(firstLine);
-    const qType = getSectionType(pos >= 0 ? pos : 0);
-
-    // Extract question text (handle "1. text" and "1 text" and "1、text")
-    let qText = firstLine.replace(/^\d+[.、．)\s]+/, '').trim();
-    // If question text is empty (number was on its own line), check next line
-    if (!qText && block.length > 1) {
-      qText = block[1].trim();
-      // Remove remaining lines from block for option parsing
-      block.splice(1, 1);
-    }
-
-    // ── Extract options and answer ──
-    let options = [];
-    let answer = null;
-    let explanation = '';
-
-    for (let i = 1; i < block.length; i++) {
-      const bline = block[i].trim();
-
-      // Answer line
-      const ansMatch = bline.match(/^(?:答案|正确答案|正确选项|参考答案)[：:是为]\s*(.+)/i);
-      if (ansMatch) {
-        answer = ansMatch[1].trim();
-        continue;
-      }
-      const explainMatch = bline.match(/^(?:解析|解释|说明)[：:]\s*(.+)/i);
-      if (explainMatch) {
-        explanation = explainMatch[1].trim();
-        continue;
-      }
-
-      // Same-line multiple options: "A．xxx　　B．xxx　　C．xxx"
-      const allOptMatches = bline.match(/[A-H][.、．)\s]+\S+/g);
-      if (allOptMatches && allOptMatches.length >= 2) {
-        const parts = bline.split(/\s*(?=[A-H][.、．)\s]+)/);
-        for (const part of parts) {
-          const pm = part.match(/^([A-H])[.、．)\s]+(.+)/);
-          if (pm) options.push({ letter: pm[1], text: pm[2].trim() });
-        }
-        continue;
-      }
-
-      // Single option per line
-      const optMatch = bline.match(/^([A-H])[.、．)\s]+(.+)/);
-      if (optMatch) {
-        options.push({ letter: optMatch[1], text: optMatch[2].trim() });
-        continue;
-      }
-
-      // Standalone letter followed by text on next line (e.g., "A" then "xxx")
-      if (/^[A-H]$/i.test(bline) && i + 1 < block.length) {
-        const nextLine = block[i + 1].trim();
-        if (!/^[A-H][.、．)\s]/.test(nextLine) && !/^[A-H]$/i.test(nextLine) &&
-            !/^答案/.test(nextLine) && !/^解析/.test(nextLine)) {
-          options.push({ letter: bline.toUpperCase(), text: nextLine });
-          i++; // skip next line
-          continue;
-        }
-      }
-
-      // Inline answer in brackets
-      const inlineAns = bline.match(/[（(]\s*([A-H]+)\s*[）)]/);
-      if (inlineAns && !answer) {
-        answer = inlineAns[1];
-        continue;
-      }
-    }
-
-    // Try to extract inline options from question text
-    if (options.length === 0) {
-      const compactCheck = qText.match(/[A-H][.、．)\s]+\S+/g);
-      if (compactCheck && compactCheck.length >= 2) {
-        const parts = qText.split(/\s*(?=[A-H][.、．)\s]+)/);
-        const firstPart = parts.shift() || '';
-        qText = firstPart.replace(/\s+$/, '').trim();
-        for (const part of parts) {
-          const pm = part.match(/^([A-H])[.、．)\s]+(.+)/);
-          if (pm) options.push({ letter: pm[1], text: pm[2].trim() });
-        }
-      }
-    }
-
-    // Check question text for inline answer "题目（ B ）"
-    if (!answer) {
-      const qInlineAns = qText.match(/[（(]\s*([A-H]+)\s*[）)]/);
-      if (qInlineAns) {
-        answer = qInlineAns[1];
-        qText = qText.replace(/[（(]\s*[A-H]*\s*[）)]/, '（ ）').trim();
-      }
-    }
-
-    // ── Fill-in-the-blank / Short answer ──
-    if (qType === 'fillblank' || qType === 'shortanswer') {
-      qNum++;
-      questions.push({
-        id: qNum, type: qType, text: qText || '(题目内容)',
-        options: [], answerText: [answer || ''], explanation
-      });
-      continue;
-    }
-
-    // ── True/false auto-detect ──
-    if (qType === 'truefalse' && options.length === 0) {
+    // True/false auto-options
+    if (qType === 'truefalse' && options.length < 2) {
       options = [{ letter: 'A', text: '正确' }, { letter: 'B', text: '错误' }];
+    }
+
+    // Fillblank / shortanswer
+    if (finalType === 'fillblank' || finalType === 'shortanswer') {
+      qNum++;
+      questions.push({
+        id: qNum, type: finalType, text: qText || firstClean,
+        options: [], answerText: [answer || ''], explanation: ''
+      });
+      continue;
+    }
+
+    // Auto fillblank: no options but has text answer
+    if (options.length === 0 && answer && finalType === 'single') {
+      qNum++;
+      questions.push({
+        id: qNum, type: 'fillblank', text: qText || firstClean,
+        options: [], answerText: [answer], explanation: ''
+      });
+      continue;
     }
 
     if (options.length < 2) continue;
 
-    const finalType = (qType === 'truefalse' && options.length === 2) ? 'truefalse'
-      : (qType === 'multiple' ? 'multiple' : 'single');
-
-    const normalizedAns = normalizeAnswer(answer);
-    const finalAnswer = normalizedAns || [0];
-
-    const cleanOpts = options.map((o, i) => ({
+    // Build question
+    const na = normalizeAnswer(answer);
+    const fa = na || [0];
+    const co = options.map((o, i) => ({
       letter: LETTERS[i],
       text: o.text.replace(/^[A-H][.、．)\s]+/, '').trim()
     }));
@@ -1429,12 +1214,13 @@ function parseLineFormat (text, sectionTypes) {
     qNum++;
     questions.push({
       id: qNum, type: finalType, text: qText || '(题目内容)',
-      options: cleanOpts, answer: finalAnswer, explanation
+      options: co, answer: fa, explanation: ''
     });
   }
 
   return questions;
 }
+
 
 // ═══════════════════════════════════════
 //  File Handling
@@ -1520,16 +1306,88 @@ function processParsedText (text) {
   if (questions.length === 0) {
     showError('未能解析出题目，请检查格式。可展开"查看/编辑原始解析文本"查看和修改提取到的文本。');
     questionPreview.style.display = 'none';
-    // Show raw text so user can debug
     $('#rawTextArea').value = text;
     $('#rawTextSection').style.display = 'block';
     return;
   }
   state.questions = questions;
   showPreview(questions);
-  // Populate raw text section
   $('#rawTextArea').value = text;
   $('#rawTextSection').style.display = 'block';
+  // Save to localStorage
+  saveToStorage();
+}
+
+// ── localStorage persistence ──
+const STORAGE_KEY = 'quiz_app_data';
+
+function saveToStorage() {
+  try {
+    const data = {
+      questions: state.questions,
+      rawText: rawTextCache,
+      answers: state.answers,
+      confirmed: state.confirmed,
+      currentIdx: state.currentIdx,
+      timerSec: state.timerSec,
+      savedAt: Date.now()
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch(e) { /* storage full or unavailable */ }
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return data;
+  } catch(e) { return null; }
+}
+
+function showSavedBanner() {
+  const data = loadFromStorage();
+  if (data && data.questions && data.questions.length > 0) {
+    $('#savedQCount').textContent = data.questions.length;
+    $('#savedQuizBanner').style.display = 'block';
+  }
+}
+
+function resumeSavedQuiz() {
+  const data = loadFromStorage();
+  if (!data || !data.questions) return;
+
+  state.questions = data.questions;
+  state.answers = data.answers || {};
+  state.confirmed = data.confirmed || {};
+  state.currentIdx = data.currentIdx || 0;
+  state.timerSec = data.timerSec || 0;
+  rawTextCache = data.rawText || '';
+  state.quizStarted = true;
+
+  $('#upload-page').style.display = 'none';
+  $('#quiz-page').style.display = 'block';
+  $('#results-page').style.display = 'none';
+
+  buildNav();
+  renderQuestion();
+  startTimer();
+  updateProgress();
+  updateNavHighlight();
+  updateTimerDisplay();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function clearSavedQuiz() {
+  if (confirm('确定要清除保存的题库记录吗？')) {
+    localStorage.removeItem(STORAGE_KEY);
+    $('#savedQuizBanner').style.display = 'none';
+  }
+}
+
+// Auto-save during quiz
+function autoSave() {
+  if (state.questions.length > 0) saveToStorage();
 }
 
 function reparseRawText () {
@@ -1666,6 +1524,7 @@ function jumpTo (idx) {
   renderQuestion();
   updateNavHighlight();
   updateProgress();
+  autoSave();
 }
 
 function prevQuestion () {
@@ -1674,6 +1533,7 @@ function prevQuestion () {
     renderQuestion();
     updateNavHighlight();
     updateProgress();
+    autoSave();
   }
 }
 
@@ -1857,6 +1717,7 @@ function selectOption (optIdx) {
     // Single choice: select and immediately confirm
     state.answers[state.currentIdx] = [optIdx];
     state.confirmed[state.currentIdx] = true;
+    autoSave();
     renderQuestion();
     updateNavHighlight();
 
@@ -1896,6 +1757,7 @@ function confirmMultiSelect () {
   if (!userAns || userAns.length === 0) return;
 
   state.confirmed[state.currentIdx] = true;
+  autoSave();
   renderQuestion();
   updateNavHighlight();
   checkAllConfirmed();
@@ -1919,6 +1781,7 @@ function confirmFillBlank () {
   if (!userText) return; // don't confirm empty answers
   state.answers[state.currentIdx] = [userText];
   state.confirmed[state.currentIdx] = true;
+  autoSave();
   renderQuestion();
   updateNavHighlight();
   checkAllConfirmed();
@@ -2102,6 +1965,9 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); prevQuestion(); }
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); nextQuestion(); }
 });
+
+// ── Init: check for saved data ──
+showSavedBanner();
 </script>
 
 </body>
