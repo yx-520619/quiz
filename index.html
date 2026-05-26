@@ -760,6 +760,12 @@ h1, h2, h3, .font-display {
         <button class="btn btn-secondary btn-sm" onclick="clearSavedQuiz()" style="margin-left:8px;">清除记录</button>
       </div>
 
+      <div id="wrongBookBanner" style="display:none; margin-top:10px; padding:14px 20px; background:#fdf0ef; border-radius:var(--radius-sm); text-align:center;">
+        <span style="font-weight:600;color:var(--incorrect);">错题集：共 <strong id="wrongBookCount">0</strong> 道错题</span>
+        <button class="btn btn-accent btn-sm" onclick="startWrongQuiz()" style="margin-left:12px;">重做错题</button>
+        <button class="btn btn-secondary btn-sm" onclick="clearWrongBook()" style="margin-left:8px;">清空</button>
+      </div>
+
       <div id="errorMsg" class="error-msg"></div>
 
       <!-- Preview after parsing -->
@@ -767,7 +773,16 @@ h1, h2, h3, .font-display {
         <h4>已解析题目预览</h4>
         <div id="previewList"></div>
         <div class="preview-stats" id="previewStats"></div>
-        <div style="margin-top: 20px; text-align: center;">
+        <div class="quiz-config" id="quizConfig" style="margin-top:20px;padding:16px;background:#fdfcfa;border-radius:var(--radius-sm);border:1px solid var(--border);">
+          <div style="font-weight:600;font-size:0.95rem;margin-bottom:12px;text-align:center;">抽题设置（留空=全部）</div>
+          <div id="typeCountInputs" style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:center;"></div>
+          <div style="margin-top:12px;text-align:center;">
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer;">
+              <input type="checkbox" id="shuffleCheck" checked style="accent-color:var(--accent);"> 随机打乱题目顺序
+            </label>
+          </div>
+        </div>
+        <div style="margin-top: 16px; text-align: center;">
           <button class="btn btn-accent" onclick="startQuiz()">开始答题</button>
         </div>
       </div>
@@ -1431,6 +1446,103 @@ function showPreview (questions) {
   `;
 
   questionPreview.style.display = 'block';
+  // Build per-type count inputs
+  buildTypeSelectors(questions);
+}
+
+function buildTypeSelectors(questions) {
+  const typeLabels = { single: '单选题', multiple: '多选题', truefalse: '判断题', fillblank: '填空题', shortanswer: '简答题' };
+  const counts = {};
+  questions.forEach(q => {
+    const t = q.type;
+    if (!counts[t]) counts[t] = 0;
+    counts[t]++;
+  });
+
+  const container = $('#typeCountInputs');
+  container.innerHTML = Object.entries(counts).map(([type, count]) => `
+    <div style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:#fff;border-radius:8px;border:1px solid var(--border);">
+      <span style="font-size:0.82rem;white-space:nowrap;font-weight:500;">${typeLabels[type] || type}</span>
+      <input type="number" class="type-count-input" data-type="${type}" min="0" max="${count}" value="" placeholder="${count}"
+        style="width:56px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;text-align:center;font-family:inherit;">
+      <span style="font-size:0.75rem;color:var(--text-secondary);">/ ${count}</span>
+    </div>
+  `).join('');
+}
+
+// ── Shuffle helper ──
+function shuffleArray(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// ── Wrong answer book ──
+const WRONG_KEY = 'quiz_wrong_book';
+
+function getWrongBook() {
+  try {
+    return JSON.parse(localStorage.getItem(WRONG_KEY)) || [];
+  } catch(e) { return []; }
+}
+
+function saveWrongBook(questions) {
+  try {
+    localStorage.setItem(WRONG_KEY, JSON.stringify(questions));
+  } catch(e) {}
+}
+
+function addToWrongBook(wrongQuestions) {
+  const book = getWrongBook();
+  // Merge: add new wrong questions, deduplicate by question text
+  for (const wq of wrongQuestions) {
+    const exists = book.find(q => q.text === wq.text);
+    if (!exists) book.push(wq);
+  }
+  saveWrongBook(book);
+  showWrongBookBanner();
+}
+
+function showWrongBookBanner() {
+  const book = getWrongBook();
+  if (book.length > 0) {
+    $('#wrongBookCount').textContent = book.length;
+    $('#wrongBookBanner').style.display = 'block';
+  }
+}
+
+function startWrongQuiz() {
+  const book = getWrongBook();
+  if (book.length === 0) return;
+  state.questions = book.map((q, i) => ({ ...q, id: i + 1 }));
+  resetAndStartQuiz();
+}
+
+function clearWrongBook() {
+  if (confirm('确定要清空错题集吗？')) {
+    saveWrongBook([]);
+    $('#wrongBookBanner').style.display = 'none';
+  }
+}
+
+function resetAndStartQuiz() {
+  state.currentIdx = 0;
+  state.answers = {};
+  state.confirmed = {};
+  state.timerSec = 0;
+  state.quizStarted = true;
+  $('#upload-page').style.display = 'none';
+  $('#quiz-page').style.display = 'block';
+  $('#results-page').style.display = 'none';
+  buildNav();
+  renderQuestion();
+  startTimer();
+  updateProgress();
+  updateNavHighlight();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // ═══════════════════════════════════════
@@ -1438,24 +1550,46 @@ function showPreview (questions) {
 // ═══════════════════════════════════════
 function startQuiz () {
   if (state.questions.length === 0) return;
-  state.currentIdx = 0;
-  state.answers = {};
-  state.confirmed = {};
-  state.timerSec = 0;
-  state.quizStarted = true;
 
-  $('#upload-page').style.display = 'none';
-  $('#quiz-page').style.display = 'block';
-  $('#results-page').style.display = 'none';
+  // Read per-type counts from input fields
+  const inputs = $$('.type-count-input');
+  const typeCounts = {};
+  let hasAnySelection = false;
+  inputs.forEach(inp => {
+    const val = parseInt(inp.value) || 0;
+    const type = inp.dataset.type;
+    if (val > 0) { typeCounts[type] = val; hasAnySelection = true; }
+  });
 
-  buildNav();
-  renderQuestion();
-  startTimer();
-  updateProgress();
-  updateNavHighlight();
+  let selectedQuestions = [];
+  if (hasAnySelection) {
+    // Per-type extraction
+    const allQuestions = state.questions;
+    for (const [type, count] of Object.entries(typeCounts)) {
+      const pool = allQuestions.filter(q => q.type === type);
+      const shuffled = shuffleArray(pool);
+      selectedQuestions.push(...shuffled.slice(0, Math.min(count, pool.length)));
+    }
+  } else {
+    // No selection = take all
+    selectedQuestions = state.questions.slice();
+  }
 
-  // Scroll to top
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (selectedQuestions.length === 0) {
+    alert('没有选择任何题目，请至少设置一种题型的抽取数量。');
+    return;
+  }
+
+  // Apply shuffle if checked
+  if ($('#shuffleCheck').checked) {
+    selectedQuestions = shuffleArray(selectedQuestions);
+  }
+
+  // Re-index
+  selectedQuestions = selectedQuestions.map((q, i) => ({ ...q, id: i + 1 }));
+  state.questions = selectedQuestions;
+
+  resetAndStartQuiz();
 }
 
 function startTimer () {
@@ -1850,6 +1984,12 @@ function showResults () {
     return { q, userDisplay, correctDisplay, correct, index: i, isTextType };
   });
 
+  // Save wrong answers to 错题集
+  const wrongQuestions = reviewItems.filter(item => !item.correct).map(item => item.q);
+  if (wrongQuestions.length > 0) {
+    addToWrongBook(wrongQuestions);
+  }
+
   const score = total > 0 ? Math.round((correctCount / total) * 100) : 0;
   const accuracy = total > 0 ? Math.round((correctCount / total) * 100) : 0;
 
@@ -1917,6 +2057,8 @@ function backToUpload () {
   $('#errorMsg').style.display = 'none';
   $('#pasteArea').value = '';
 
+  showSavedBanner();
+  showWrongBookBanner();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -1968,6 +2110,7 @@ document.addEventListener('keydown', (e) => {
 
 // ── Init: check for saved data ──
 showSavedBanner();
+showWrongBookBanner();
 </script>
 
 </body>
