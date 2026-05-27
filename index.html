@@ -2537,9 +2537,9 @@ function confirmMultiSelect () {
 
 function confirmFillBlank () {
   const q = state.questions[state.currentIdx];
-  if (q.type !== 'fillblank' && q.type !== 'fillblank') return;
+  if (q.type !== 'fillblank' && q.type !== 'shortanswer') return;
 
-  const input = $('#fillblankInput') || $('#fillblankInput');
+  const input = $('#fillblankInput') || $('#shortanswerInput');
   const userText = input ? input.value.trim() : '';
   if (!userText) return; // don't confirm empty answers
   state.answers[state.currentIdx] = [userText];
@@ -2785,7 +2785,7 @@ document.addEventListener('keydown', (e) => {
   }
 
   // Ctrl+Enter for confirming fillblank (so Enter can still be used for newlines)
-  if (e.key === 'Enter' && e.ctrlKey && !isConfirmed && q.type === 'fillblank') {
+  if (e.key === 'Enter' && e.ctrlKey && !isConfirmed && (q.type === 'fillblank' || q.type === 'shortanswer')) {
     e.preventDefault();
     confirmFillBlank();
   }
