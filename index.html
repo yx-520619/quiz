@@ -848,7 +848,7 @@ body.dark .modal-content { background: #252540; }
 <div class="container" id="app">
 
   <button class="dark-toggle" onclick="toggleDarkMode()" title="切换夜间模式" style="top:16px;">&#9789;</button>
-  <button class="dark-toggle" onclick="openWrongBookModal()" title="错题集" style="top:64px;">&#128214;</button>
+  <button class="dark-toggle" id="wrongBookBtn" onclick="openWrongBookModal()" title="错题集" style="top:64px;">&#128214;</button>
 
   <!-- ═══════════ UPLOAD PAGE ═══════════ -->
   <div id="upload-page">
@@ -2090,6 +2090,7 @@ function resetAndStartQuiz() {
   state.quizStarted = true;
   $('#upload-page').style.display = 'none';
   $('#quiz-page').style.display = 'block';
+  $('#wrongBookBtn').style.display = 'none';
   $('#results-page').style.display = 'none';
   buildNav();
   renderQuestion();
@@ -2637,6 +2638,7 @@ function showResults () {
   $('#quiz-page').style.display = 'none';
   $('#upload-page').style.display = 'none';
   $('#results-page').style.display = 'block';
+  $('#wrongBookBtn').style.display = 'flex';
 
   const total = state.questions.length;
   let correctCount = 0;
@@ -2736,6 +2738,7 @@ function backToUpload () {
   $('#quiz-page').style.display = 'none';
   $('#results-page').style.display = 'none';
   $('#upload-page').style.display = 'block';
+  $('#wrongBookBtn').style.display = 'flex';
   $('#questionPreview').style.display = 'none';
   $('#fileName').style.display = 'none';
   $('#errorMsg').style.display = 'none';
