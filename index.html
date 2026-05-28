@@ -7,24 +7,29 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #faf7f2;
-  --card: #ffffff;
-  --text: #2c2416;
-  --text-secondary: #8b8068;
-  --ink: #1e293b;
-  --accent: #c4924a;
-  --accent-light: #f5e6d3;
-  --gold: #b8860b;
-  --correct: #2d8a56;
+  --bg: #f9f5ef;
+  --card: #fffefb;
+  --text: #2d2218;
+  --text-secondary: #8c7963;
+  --ink: #1f1a14;
+  --accent: #c4553f;
+  --accent-hover: #a3402d;
+  --accent-light: #fdf2ef;
+  --accent-glow: rgba(196,85,63,0.1);
+  --gold: #a08458;
+  --gold-light: #f8f3ea;
+  --correct: #2f7d50;
   --correct-bg: #edf7f1;
-  --incorrect: #c0392b;
-  --incorrect-bg: #fdf0ef;
-  --border: #e8e0d5;
-  --shadow: 0 2px 16px rgba(44,36,22,0.06);
-  --shadow-lg: 0 8px 40px rgba(44,36,22,0.1);
-  --radius: 16px;
-  --radius-sm: 10px;
-  --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --incorrect: #c4553f;
+  --incorrect-bg: #fef3f0;
+  --border: #e6dfd4;
+  --border-light: #f0eae0;
+  --shadow-sm: 0 1px 3px rgba(30,22,14,0.04);
+  --shadow: 0 2px 18px rgba(30,22,14,0.06);
+  --shadow-lg: 0 8px 44px rgba(30,22,14,0.1);
+  --radius: 18px;
+  --radius-sm: 11px;
+  --transition: 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -36,12 +41,15 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  line-height: 1.6;
+  line-height: 1.65;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background-image:
-    radial-gradient(ellipse at 20% 20%, rgba(196,146,74,0.04) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 80%, rgba(46,125,50,0.03) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 50%, rgba(30,41,59,0.02) 0%, transparent 70%);
+    radial-gradient(ellipse 70% 50% at 10% 5%, rgba(196,85,63,0.045) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 45% at 90% 95%, rgba(47,125,80,0.03) 0%, transparent 50%),
+    radial-gradient(ellipse 75% 60% at 50% 45%, rgba(160,132,88,0.025) 0%, transparent 60%);
+  background-attachment: fixed;
+  transition: background 0.5s ease, color 0.5s ease;
 }
 
 /* ── Typography ── */
@@ -69,11 +77,11 @@ h1, h2, h3, .font-display {
   margin-bottom: 48px;
 }
 .app-header h1 {
-  font-size: 2.4rem;
+  font-size: 2.5rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  margin-bottom: 6px;
-  background: linear-gradient(135deg, var(--ink) 0%, #3d4f66 100%);
+  margin-bottom: 8px;
+  background: linear-gradient(145deg, var(--ink) 0%, #3d3028 45%, var(--accent) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -91,7 +99,8 @@ h1, h2, h3, .font-display {
   border-radius: var(--radius);
   padding: 40px;
   box-shadow: var(--shadow);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-light);
+  border-top: 3px solid var(--accent);
   transition: var(--transition);
 }
 .card:hover { box-shadow: var(--shadow-lg); }
@@ -131,16 +140,16 @@ h1, h2, h3, .font-display {
 }
 .btn-secondary:hover {
   border-color: var(--ink);
-  background: #faf9f7;
+  background: #f7f4ee;
 }
 .btn-accent {
   background: var(--accent);
   color: #fff;
 }
 .btn-accent:hover {
-  background: #b07d35;
+  background: var(--accent-hover);
   transform: translateY(-1px);
-  box-shadow: 0 6px 24px rgba(196,146,74,0.3);
+  box-shadow: 0 6px 24px var(--accent-glow);
 }
 .btn:disabled {
   opacity: 0.5;
@@ -157,12 +166,13 @@ h1, h2, h3, .font-display {
   text-align: center;
   cursor: pointer;
   transition: var(--transition);
-  background: #fdfcfa;
+  background: linear-gradient(180deg, #fefdfa 0%, #faf7f1 100%);
   position: relative;
 }
 .drop-zone:hover, .drop-zone.drag-over {
   border-color: var(--accent);
-  background: var(--accent-light);
+  background: linear-gradient(180deg, var(--accent-light) 0%, #fdf5f2 100%);
+  transform: scale(1.01);
 }
 .drop-zone .icon {
   font-size: 3rem;
@@ -219,14 +229,14 @@ h1, h2, h3, .font-display {
   font-family: inherit;
   font-size: 0.95rem;
   resize: vertical;
-  background: #fdfcfa;
+  background: #faf8f3;
   transition: var(--transition);
   line-height: 1.8;
 }
 .paste-section textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(196,146,74,0.1);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 .paste-section .btn { margin-top: 12px; }
 
@@ -235,7 +245,7 @@ h1, h2, h3, .font-display {
   max-height: 300px;
   overflow-y: auto;
   padding: 20px;
-  background: #fdfcfa;
+  background: #faf8f3;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
 }
@@ -374,8 +384,8 @@ h1, h2, h3, .font-display {
   font-weight: 500;
   flex-shrink: 0;
 }
-.nav-dot:hover { border-color: var(--accent); color: var(--accent); }
-.nav-dot.current { background: var(--ink); color: #fff; border-color: var(--ink); }
+.nav-dot:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+.nav-dot.current { background: var(--accent); color: #fff; border-color: var(--accent); }
 .nav-dot.correct-dot { background: var(--correct); border-color: var(--correct); color: #fff; }
 .nav-dot.incorrect-dot { background: var(--incorrect); border-color: var(--incorrect); color: #fff; }
 
@@ -411,7 +421,7 @@ h1, h2, h3, .font-display {
 }
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent), var(--gold));
+  background: linear-gradient(90deg, var(--accent), #d47862, var(--gold));
   border-radius: 10px;
   transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -432,7 +442,8 @@ h1, h2, h3, .font-display {
   border-radius: var(--radius);
   padding: 36px 40px;
   box-shadow: var(--shadow);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-light);
+  border-top: 3px solid var(--accent);
   min-height: 360px;
   transition: var(--transition);
   animation: fadeSlideIn 0.35s ease;
@@ -454,10 +465,10 @@ h1, h2, h3, .font-display {
   font-weight: 600;
   letter-spacing: 0.02em;
 }
-.q-type-badge.single { background: #e8f0fe; color: #1a56db; }
-.q-type-badge.multiple { background: #fef3c7; color: #92400e; }
-.q-type-badge.truefalse { background: #e0e7ff; color: #4338ca; }
-.q-type-badge.fillblank { background: #fce4ec; color: #ad1457; }
+.q-type-badge.single { background: #edf4fc; color: #2d6bc4; }
+.q-type-badge.multiple { background: #fef7e5; color: #a06820; }
+.q-type-badge.truefalse { background: #efeffa; color: #4a45b0; }
+.q-type-badge.fillblank { background: #fdf2f5; color: #b8405c; }
 .q-number {
   font-family: "Playfair Display", serif;
   font-size: 1rem;
@@ -482,8 +493,8 @@ h1, h2, h3, .font-display {
   align-items: center;
   gap: 14px;
   padding: 16px 20px;
-  background: #fdfcfa;
-  border: 1.5px solid var(--border);
+  background: #fdfbf7;
+  border: 1.5px solid var(--border-light);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: var(--transition);
@@ -494,8 +505,9 @@ h1, h2, h3, .font-display {
 }
 .option-btn:hover {
   border-color: var(--accent);
-  background: var(--accent-light);
+  background: #fef9f7;
   transform: translateX(4px);
+  box-shadow: var(--shadow-sm);
 }
 .option-letter {
   width: 36px;
@@ -512,13 +524,13 @@ h1, h2, h3, .font-display {
   color: var(--text-secondary);
 }
 .option-btn.selected {
-  border-color: var(--ink);
-  background: #f0ece6;
+  border-color: var(--accent);
+  background: var(--accent-light);
 }
 .option-btn.selected .option-letter {
-  background: var(--ink);
+  background: var(--accent);
   color: #fff;
-  border-color: var(--ink);
+  border-color: var(--accent);
 }
 .option-btn.correct {
   border-color: var(--correct) !important;
@@ -548,14 +560,14 @@ h1, h2, h3, .font-display {
   border-radius: var(--radius-sm);
   font-size: 1.05rem;
   font-family: inherit;
-  background: #fdfcfa;
+  background: #faf8f3;
   transition: var(--transition);
   outline: none;
   color: var(--ink);
 }
 .fillblank-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(196,146,74,0.1);
+  box-shadow: 0 0 0 4px var(--accent-glow);
 }
 .fillblank-input.confirmed {
   background: #f9fafb;
@@ -582,7 +594,7 @@ h1, h2, h3, .font-display {
   border-radius: var(--radius-sm);
   font-size: 1rem;
   font-family: inherit;
-  background: #fdfcfa;
+  background: #faf8f3;
   transition: var(--transition);
   outline: none;
   color: var(--ink);
@@ -591,7 +603,7 @@ h1, h2, h3, .font-display {
 }
 .fillblank-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(196,146,74,0.1);
+  box-shadow: 0 0 0 4px var(--accent-glow);
 }
 .fillblank-input.confirmed {
   background: #f9fafb;
@@ -653,8 +665,8 @@ h1, h2, h3, .font-display {
   border-radius: 50%;
   padding: 8px;
   background: conic-gradient(
-    var(--correct) calc(var(--score-pct, 0) * 1%),
-    var(--border) calc(var(--score-pct, 0) * 1%)
+    var(--accent) calc(var(--score-pct, 0) * 1%),
+    var(--border-light) calc(var(--score-pct, 0) * 1%)
   );
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 8px));
   mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 8px));
@@ -736,32 +748,36 @@ h1, h2, h3, .font-display {
 
 /* ── Dark mode ── */
 body.dark {
-  --bg: #1a1a2e; --card: #252540; --text: #dcdcdc; --text-secondary: #999;
-  --ink: #e0e0e0; --accent: #e8a87c; --accent-light: #3a3a50;
-  --gold: #d4a574; --correct: #3cb371; --correct-bg: #1e3a2e;
-  --incorrect: #e85d5d; --incorrect-bg: #3e1e1e;
-  --border: #3a3a55; --shadow: 0 2px 16px rgba(0,0,0,0.3); --shadow-lg: 0 8px 40px rgba(0,0,0,0.4);
-  background-image: radial-gradient(ellipse at 20% 20%, rgba(232,168,124,0.06) 0%, transparent 50%), radial-gradient(ellipse at 80% 80%, rgba(60,179,113,0.04) 0%, transparent 50%);
+  --bg: #1b1917; --card: #252220; --text: #d4cfc7; --text-secondary: #8c8277;
+  --ink: #e8e2d8; --accent: #d47862; --accent-hover: #e08870; --accent-light: #352824;
+  --accent-glow: rgba(212,120,98,0.15); --gold: #b89464; --gold-light: #2d2822;
+  --correct: #4ca878; --correct-bg: #1e2e26;
+  --incorrect: #d47862; --incorrect-bg: #302422;
+  --border: #363230; --border-light: #2e2b28;
+  --shadow: 0 2px 16px rgba(0,0,0,0.35); --shadow-lg: 0 8px 40px rgba(0,0,0,0.5);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.25);
+  background-image: radial-gradient(ellipse at 15% 10%, rgba(212,120,98,0.07) 0%, transparent 55%), radial-gradient(ellipse at 85% 90%, rgba(76,168,120,0.04) 0%, transparent 50%);
 }
-body.dark .card, body.dark .question-card { background: var(--card); }
-body.dark .drop-zone { background: #1e1e35; }
-body.dark .drop-zone:hover { background: #2a2a45; }
-body.dark .option-btn { background: #1e1e35; }
-body.dark .option-btn:hover { background: #2a2a45; }
-body.dark .fillblank-input, body.dark .fillblank-input, body.dark .paste-section textarea { background: #1e1e35; color: #dcdcdc; }
+body.dark .card, body.dark .question-card { background: var(--card); border-color: var(--border-light); }
+body.dark .drop-zone { background: #1f1d1b; }
+body.dark .drop-zone:hover { background: #282420; }
+body.dark .option-btn { background: #1f1d1b; }
+body.dark .option-btn:hover { background: #282420; }
+body.dark .fillblank-input, body.dark .fillblank-input, body.dark .paste-section textarea { background: #1f1d1b; color: #d4cfc7; border-color: var(--border); }
 body.dark .quiz-nav { background: var(--card); }
-body.dark .nav-dot { background: #1e1e35; }
-body.dark .question-preview { background: #1e1e35; }
-body.dark .quiz-config { background: #1e1e35; }
-body.dark .modal-content { background: #252540; }
+body.dark .nav-dot { background: #1f1d1b; }
+body.dark .question-preview { background: #1f1d1b; }
+body.dark .quiz-config { background: #1f1d1b; }
+body.dark .modal-content { background: #252220; }
 
 .dark-toggle {
   position: fixed; top: 16px; right: 20px; z-index: 50;
-  width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--border);
-  background: var(--card); cursor: pointer; font-size: 1.2rem; transition: var(--transition);
+  width: 42px; height: 42px; border-radius: 50%; border: 1.5px solid var(--border);
+  background: var(--card); cursor: pointer; font-size: 1.3rem; transition: var(--transition);
   display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
 }
-.dark-toggle:hover { border-color: var(--accent); }
+.dark-toggle:hover { border-color: var(--accent); transform: scale(1.08); box-shadow: var(--shadow-lg); }
 
 /* ── Favorites section ── */
 .fav-section { margin-top: 12px; }
@@ -915,7 +931,7 @@ body.dark .modal-content { background: #252540; }
           <p style="font-size:0.8rem;color:var(--text-secondary);margin:8px 0;">发现答案有误？点击修改，改完后会自动保存。</p>
           <div id="answerReviewList" style="max-height:400px;overflow-y:auto;"></div>
         </details>
-        <div class="quiz-config" id="quizConfig" style="margin-top:20px;padding:16px;background:#fdfcfa;border-radius:var(--radius-sm);border:1px solid var(--border);">
+        <div class="quiz-config" id="quizConfig" style="margin-top:20px;padding:16px;background:#faf8f3;border-radius:var(--radius-sm);border:1px solid var(--border);">
           <div style="font-weight:600;font-size:0.95rem;margin-bottom:12px;text-align:center;">抽题设置（留空=全部）</div>
           <div id="typeCountInputs" style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:center;"></div>
           <div style="margin-top:12px;text-align:center;">
@@ -1210,13 +1226,22 @@ function assemble_questions(lines) {
       continue;
     }
 
-    // Answer line: 答案：X or 答案 X
-    const ansM = line.match(/(?:答案|正确答案|正确选项|参考答案)[：:\s](.+)$/i);
+    // Answer line: 答案：X / 答：X / 答案 X / 答 X
+    const ansM = line.match(/(?:答案|正确答案|正确选项|参考答案|答)[：:\s](.+)$/i);
     if (ansM) {
-      buf.ansLine = ansM[1].trim();
-      // Keep pre-answer text as question content
+      const ansValue = ansM[1].trim();
       const preAns = line.substring(0, line.indexOf(ansM[0])).trim();
-      if (preAns && !/^\d+[、.．)\s]/.test(preAns) && buf.qLines.length > 0) {
+      if (preAns && /^\d+[、.．)\s]/.test(preAns)) {
+        // Answer on a numbered line → this is a complete question+answer
+        pushChunk();
+        buf.qLines.push(preAns);
+        buf.type = currentType;
+        buf.ansLine = ansValue;
+        pushChunk();
+        continue;
+      }
+      buf.ansLine = ansValue;
+      if (preAns && buf.qLines.length > 0) {
         buf.qLines.push(preAns);
       } else if (preAns && buf.qLines.length === 0) {
         buf.qLines.push(preAns);
@@ -1225,9 +1250,25 @@ function assemble_questions(lines) {
       continue;
     }
 
-    // Try: 答案为B / 答案是C
-    const inlineAns = line.match(/(?:答案[为是])\s*([A-H])\b/i);
-    if (inlineAns && buf.qLines.length > 0) {
+    // Try: 答案为B / 答案是C / 答为B / 答是C
+    const inlineAns = line.match(/(?:答案|答)[为是]\s*([A-H])\b/i);
+    if (inlineAns) {
+      const preAns = line.substring(0, line.indexOf(inlineAns[0])).trim();
+      if (preAns && /^\d+[、.．)\s]/.test(preAns)) {
+        // Inline answer on a numbered line
+        pushChunk();
+        buf.qLines.push(preAns);
+        buf.type = currentType;
+        buf.ansLine = inlineAns[1].toUpperCase();
+        pushChunk();
+        continue;
+      }
+      if (buf.qLines.length > 0) {
+        buf.ansLine = inlineAns[1].toUpperCase();
+        pushChunk();
+        continue;
+      }
+      // Fall through: treat as orphan answer line
       buf.ansLine = inlineAns[1].toUpperCase();
       pushChunk();
       continue;
@@ -1245,8 +1286,21 @@ function assemble_questions(lines) {
       continue;
     }
 
+    // Standalone correct/wrong text in true/false section → answer line
+    if (currentType === 'truefalse' && buf.qLines.length > 0 && /^(?:正确|错误|对|错|[✓×√✗])$/i.test(line)) {
+      buf.ansLine = line;
+      pushChunk();
+      continue;
+    }
+
     // Standalone letter (A on its own line, text on next line - mammoth artifact)
     if (/^[A-H]$/i.test(line)) {
+      // In true/false section with active question → likely an answer, not an option
+      if (currentType === 'truefalse' && buf.qLines.length > 0 && buf.optLines.length === 0) {
+        buf.ansLine = line.toUpperCase();
+        pushChunk();
+        continue;
+      }
       buf.optLines.push({ letter: line.toUpperCase(), text: '', pending: true });
       continue;
     }
@@ -1286,27 +1340,27 @@ function assemble_questions(lines) {
   for (let ci = 0; ci < chunks.length; ci++) {
     const chunk = chunks[ci];
 
-    // Answer-only chunk: try to merge into previous, or create standalone question
+    // Answer-only chunk: merge into previous question, or skip
     if (chunk.qLines.length === 0 && chunk.optLines.length === 0 && chunk.ansLine) {
       if (questions.length > 0) {
         const prev = questions[questions.length - 1];
         if (prev.type === 'fillblank' || prev.type === 'shortanswer') {
           prev.answerText[0] = (prev.answerText[0] + ' ' + chunk.ansLine).trim();
-          continue;
+        } else {
+          // Assign answer to previous question for single/multiple/truefalse
+          const na = normalizeAnswer(chunk.ansLine);
+          if (na && prev.options.length > 0) {
+            // Validate answer indices against existing options
+            const valid = na.every(idx => idx >= 0 && idx < prev.options.length);
+            if (valid) prev.answer = na;
+          } else if (na && prev.type === 'truefalse' && prev.options.length === 0) {
+            // true/false with auto-generated options
+            prev.answer = na;
+          }
         }
+        continue;
       }
-      // Create standalone question with auto-generated options (for true/false)
-      const na = normalizeAnswer(chunk.ansLine);
-      const fa = na || [0];
-      let opts = [];
-      if (chunk.type === 'truefalse') {
-        opts = [{ letter: 'A', text: '正确' }, { letter: 'B', text: '错误' }];
-      }
-      qNum++;
-      questions.push({
-        id: qNum, type: chunk.type === 'truefalse' ? 'truefalse' : 'single',
-        text: '(题目)', options: opts, answer: fa, explanation: ''
-      });
+      // No previous question → skip orphan answer
       continue;
     }
 
