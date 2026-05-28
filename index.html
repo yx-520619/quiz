@@ -1169,10 +1169,9 @@ function clean_raw_text(rawText) {
 
 // ── Module 2: match_option_line ──
 // Separators: . 、 : ） ) ．  (Chinese/English dot, enum comma, colon, brackets, fullwidth dot)
+// Separator is optional — mammoth often outputs "A选项文本" with no separator
 function match_option_line(line) {
-  const OPT_SEP = '[.、:．）)\\s]';
-  const OPT_REGEX = new RegExp('^([A-Z])' + OPT_SEP + '+\\s+(.+)$');
-  const m = line.match(OPT_REGEX);
+  const m = line.match(/^([A-H])\s*[.、:．）)]?\s*(.+)$/);
   if (m) {
     return { isOption: true, letter: m[1], text: m[2].trim() };
   }
