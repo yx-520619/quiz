@@ -1083,409 +1083,322 @@ function $ (sel) { return document.querySelector(sel); }
 function $$ (sel) { return document.querySelectorAll(sel); }
 
 // ═══════════════════════════════════════
-//  Question Parser
 // ═══════════════════════════════════════
-function parseQuestions (rawText) {
-  const text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-  if (!text) return [];
+//  Question Parser (v2 - modular, validated)
+// ═══════════════════════════════════════
 
-  // Try JSON first
-  const jsonResult = tryParseJSON(text);
-  if (jsonResult) return jsonResult;
-
-  // Try structured text parsing
-  return parseTextFormat(text);
-}
-
-function tryParseJSON (text) {
-  try {
-    const cleaned = text.replace(/^﻿/, '').trim();
-    if (!cleaned.startsWith('[') && !cleaned.startsWith('{')) return null;
-    let data = JSON.parse(cleaned);
-    if (!Array.isArray(data)) {
-      if (data.questions) data = data.questions;
-      else if (data.data) data = data.data;
-      else return null;
-    }
-    return data.map((item, i) => {
-      let type = item.type || 'single';
-      if (type === '单选' || type === '单选题') type = 'single';
-      if (type === '多选' || type === '多选题') type = 'multiple';
-      if (type === '判断' || type === '判断题') type = 'truefalse';
-
-      return {
-        id: i + 1,
-        type,
-        text: item.question || item.text || item.title || '',
-        options: item.options || item.choices || [],
-        answer: normalizeAnswer(item.answer || item.correct || item.key),
-        explanation: item.explanation || item.reason || ''
-      };
-    });
-  } catch { return null; }
-}
-
-function normalizeAnswer (ans) {
-  if (ans === undefined || ans === null) return null; // null = not found
-  if (typeof ans === 'number') return [ans];
-  if (Array.isArray(ans)) return ans.map(a => typeof a === 'string' ? letterToIndex(a) : a);
-  if (typeof ans === 'string') {
-    // Strip parenthetical explanation: "错误（原因）" → "错误", "B（详细说明）" → "B"
-    let cleaned = ans.replace(/[（(][^）)]*[）)]/g, '').trim();
-
-    // Chinese true/false → letter
-    if (/^(?:正确|对|√|✓)$/.test(cleaned)) return [0]; // A
-    if (/^(?:错误|错|×|✗)$/.test(cleaned)) return [1]; // B
-
-    // Check for multi-part answer first: "A,B,C" or "A、B、C" or "A B C"
-    const parts = cleaned.split(/[,，、\s]+/).filter(Boolean);
-    if (parts.length > 1) {
-      const indices = parts.map(letterToIndex).filter(i => i >= 0);
-      if (indices.length === parts.length) return indices;
-    }
-    // "ABC" — each char is a letter (like "ABCD" for multi-choice)
-    const upper = cleaned.toUpperCase();
-    if (upper.length > 1 && /^[A-Z]+$/.test(upper)) {
-      return upper.split('').map(letterToIndex);
-    }
-    // Try to extract just the letter: "B. xxx" → "B", "B、xxx" → "B"
-    const letterMatch = cleaned.match(/^([A-H])\b/i);
-    if (letterMatch) {
-      const single = letterToIndex(letterMatch[1]);
-      if (single >= 0) return [single];
-    }
-    const idx = letterToIndex(upper);
-    if (idx >= 0) return [idx];
-    // Numeric answer
-    const num = parseInt(cleaned);
-    if (!isNaN(num)) return [num];
-    // Text answer (for fillblank/fillblank — shouldn't reach here normally)
-    return null;
-  }
-  return null;
-}
-
-function letterToIndex (s) {
+// ── Helper: letterToIndex ──
+function letterToIndex(s) {
   const upper = s.trim().toUpperCase();
   if (upper.length === 1 && upper >= 'A' && upper <= 'Z') return upper.charCodeAt(0) - 65;
   return -1;
 }
+// ── Helper: normalizeAnswer ──
+function normalizeAnswer(ans) {
+  if (ans === undefined || ans === null) return null;
+  if (typeof ans === 'number') return [ans];
+  if (Array.isArray(ans)) return ans.map(a => typeof a === 'string' ? letterToIndex(a) : a);
+  if (typeof ans === 'string') {
+    let cleaned = ans.replace(/[（(][^）)]*[）)]/g, '').trim();
+    if (/^(?:正确|对|√|✓)$/.test(cleaned)) return [0];
+    if (/^(?:错误|错|×|✗)$/.test(cleaned)) return [1];
+    const parts = cleaned.split(/[,，、\s]+/).filter(Boolean);
+    if (parts.length > 1) { const indices = parts.map(letterToIndex).filter(i => i >= 0); if (indices.length === parts.length) return indices; }
+    const upper = cleaned.toUpperCase();
+    if (upper.length > 1 && /^[A-Z]+$/.test(upper)) return upper.split('').map(letterToIndex);
+    const letterMatch = cleaned.match(/^([A-H])\b/i);
+    if (letterMatch) { const single = letterToIndex(letterMatch[1]); if (single >= 0) return [single]; }
+    const idx = letterToIndex(upper);
+    if (idx >= 0) return [idx];
+    const num = parseInt(cleaned);
+    if (!isNaN(num)) return [num];
+    return null;
+  }
+  return null;
+}
+// ── Helper: tryParseJSON ──
+function tryParseJSON(text) {
+  try {
+    const cleaned = text.replace(/^﻿/, '').trim();
+    if (!cleaned.startsWith('[') && !cleaned.startsWith('{')) return null;
+    let data = JSON.parse(cleaned);
+    if (!Array.isArray(data)) { if (data.questions) data = data.questions; else if (data.data) data = data.data; else return null; }
+    return data.map((item, i) => ({
+      id: i + 1,
+      type: (item.type === '单选' || item.type === '单选题') ? 'single' : (item.type === '多选' || item.type === '多选题') ? 'multiple' : (item.type === '判断' || item.type === '判断题') ? 'truefalse' : 'single',
+      text: item.question || item.text || item.title || '',
+      options: item.options || item.choices || [],
+      answer: normalizeAnswer(item.answer || item.correct || item.key),
+      explanation: item.explanation || item.reason || ''
+    }));
+  } catch (e) { return null; }
+}
 
-function parseTextFormat (text) {
-  // ── Step 0: Normalize －──
-  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const lines = normalized.split('\n');
+// ── Module 1: clean_raw_text ──
+function clean_raw_text(rawText) {
+  // 1. Normalize line endings
+  let text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  // 2. Remove Word artifacts: field codes, auto-numbering, page/column breaks
+  text = text.replace(/\x00/g, ''); // null bytes
+  text = text.replace(/[--]/g, ''); // control chars except \n \t
+  // 3. Strip tabs, zero-width chars, invisible chars
+  text = text.replace(/\t/g, ' ');
+  text = text.replace(/[​-‏﻿ ]/g, ''); // zero-width, BOM, NBSP
+  // 4. Line-by-line trim, remove empty lines
+  const lines = text.split('\n')
+    .map(l => l.trim())
+    .filter(l => l.length > 0);
+  return lines;
+}
 
-  // ── Step 1: Detect section type per line ──
-  const typeZones = [];
-  const typePatterns = [
-    { regex: /单[项选]|单选题/i, type: 'single' },
-    { regex: /多[项选]|多选题/i, type: 'multiple' },
-    { regex: /判[断]|判断题/i, type: 'truefalse' },
-    { regex: /填[空]|填空题/i, type: 'fillblank' },
-    { regex: /简[答]|简答题/i, type: 'shortanswer' },
+// ── Module 2: match_option_line ──
+// Separators: . 、 : ） ) ．  (Chinese/English dot, enum comma, colon, brackets, fullwidth dot)
+function match_option_line(line) {
+  const OPT_SEP = '[.、:．）)\\s]';
+  const OPT_REGEX = new RegExp('^([A-Z])' + OPT_SEP + '+\\s+(.+)$');
+  const m = line.match(OPT_REGEX);
+  if (m) {
+    return { isOption: true, letter: m[1], text: m[2].trim() };
+  }
+  return { isOption: false, letter: null, text: null };
+}
+
+// ── Module 3: Content assembly ──
+function assemble_questions(lines) {
+  // Detect section types
+  const sectionPatterns = [
+    { test: /单[项选]|单选题/i, type: 'single' },
+    { test: /多[项选]|多选题/i, type: 'multiple' },
+    { test: /判[断]|判断题/i, type: 'truefalse' },
+    { test: /填[空]|填空题/i, type: 'fillblank' },
+    { test: /简[答]|简答题/i, type: 'shortanswer' },
   ];
-  let currentType = 'single';
+
+  // Strip preamble (TOC, title page) before first section header
+  let firstSectionIdx = -1;
   for (let i = 0; i < lines.length; i++) {
-    const l = lines[i].trim();
-    if (/^[一二三四五六七八九十]+[、.．]/.test(l)) {
-      for (const tp of typePatterns) {
-        if (tp.regex.test(l)) { currentType = tp.type; break; }
+    if (/^[一二三四五六七八九十]+[、.．]/.test(lines[i])) {
+      for (const sp of sectionPatterns) {
+        if (sp.test.test(lines[i])) { firstSectionIdx = i; break; }
       }
+      if (firstSectionIdx >= 0) break;
     }
-    typeZones.push(currentType);
+  }
+  if (firstSectionIdx > 0) {
+    lines = lines.slice(firstSectionIdx);
   }
 
-  // ── Step 2: Tab-delimited check ──
-  const hasTabs = lines.some(l => l.includes('\t'));
+  let currentType = 'single';
+  const chunks = []; // [{type, qLines: [], optLines: [{letter,text}], ansLine: null}]
+  let buf = { type: 'single', qLines: [], optLines: [], ansLine: null };
 
-  // ── Step 3: Build chunks using numbering as boundaries ──
-  const chunks = [];
-  let buf = [], bufType = 'single';
-  let inAnswer = false; // true after 答案： seen, keeps subsequent numbered lines in same chunk
+  function pushChunk() {
+    if (buf.qLines.length > 0 || buf.optLines.length > 0 || buf.ansLine) {
+      chunks.push(buf);
+    }
+    buf = { type: currentType, qLines: [], optLines: [], ansLine: null };
+  }
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    const numbered = /^\d+[、.．)\s]/.test(line);
-
-    // Blank line handling
-    if (!line) {
-      if (buf.length > 0) {
-        if (bufType === 'shortanswer') {
-          buf.push(''); // keep blank lines in SA for Q/A separation
-        } else {
-          chunks.push({ lines: buf, type: bufType });
-          buf = [];
-          inAnswer = false;
-        }
+  for (const line of lines) {
+    // Section header detection
+    const isSection = /^[一二三四五六七八九十]+[、.．]/.test(line);
+    if (isSection) {
+      for (const sp of sectionPatterns) {
+        if (sp.test.test(line)) { currentType = sp.type; break; }
       }
+      // Don't add section header to question text
       continue;
     }
 
-    if (numbered && buf.length > 0 && !inAnswer) {
-      chunks.push({ lines: buf, type: bufType });
-      buf = [];
-    }
-
-    if (numbered) {
-      // For shortanswer: if buf already has content from previous question, push first
-      if (bufType === 'shortanswer' && buf.length > 1) {
-        chunks.push({ lines: buf, type: bufType });
-        buf = [];
+    // Answer line: 答案：X or 答案 X
+    const ansM = line.match(/(?:答案|正确答案|正确选项|参考答案)[：:\s](.+)$/i);
+    if (ansM) {
+      buf.ansLine = ansM[1].trim();
+      // Keep pre-answer text as question content
+      const preAns = line.substring(0, line.indexOf(ansM[0])).trim();
+      if (preAns && !/^\d+[、.．)\s]/.test(preAns) && buf.qLines.length > 0) {
+        buf.qLines.push(preAns);
+      } else if (preAns && buf.qLines.length === 0) {
+        buf.qLines.push(preAns);
       }
-      buf.push(line);
-      bufType = typeZones[i];
-      inAnswer = (bufType === 'shortanswer');
-    } else if (buf.length > 0 && line) {
-      buf.push(line);
-    } else if (line && buf.length === 0) {
-      buf.push(line);
-      bufType = typeZones[i];
-      inAnswer = (bufType === 'shortanswer');
+      pushChunk();
+      continue;
     }
 
-    // Track if we're inside an answer block (答案 marker or unclosed parenthesis)
-    if (buf.length > 0 && /^(?:答案|正确答案|正确选项|参考答案)[：:\s为是]/.test(line)) {
-      inAnswer = true;
+    // Try: 答案为B / 答案是C
+    const inlineAns = line.match(/(?:答案[为是])\s*([A-H])\b/i);
+    if (inlineAns && buf.qLines.length > 0) {
+      buf.ansLine = inlineAns[1].toUpperCase();
+      pushChunk();
+      continue;
     }
-    // Unclosed （ on answer line → keep inAnswer for continuation lines
-    // Line with closing ） ends the answer continuation
-    if (inAnswer && /）/.test(line)) {
-      inAnswer = false;
+
+    // Option line
+    const opt = match_option_line(line);
+    if (opt.isOption) {
+      // Check if this looks like a new question starting (letter with long text after)
+      // Only add option if we already have question content
+      if (buf.qLines.length === 0 && buf.optLines.length > 0) {
+        // Continue previous option group
+      }
+      buf.optLines.push(opt);
+      continue;
+    }
+
+    // Standalone letter (A on its own line, text on next line - mammoth artifact)
+    if (/^[A-H]$/i.test(line)) {
+      buf.optLines.push({ letter: line.toUpperCase(), text: '', pending: true });
+      continue;
+    }
+
+    // If previous option was pending (standalone letter), this line is its text
+    if (buf.optLines.length > 0) {
+      const last = buf.optLines[buf.optLines.length - 1];
+      if (last.pending && !opt.isOption) {
+        last.text = line;
+        delete last.pending;
+        continue;
+      }
+    }
+
+    // Numbered line (question start)
+    if (/^\d+[、.．)\s]/.test(line)) {
+      pushChunk();
+      buf.qLines.push(line);
+      buf.type = currentType;
+      continue;
+    }
+
+    // Non-option, non-answer → question text or answer continuation
+    if (buf.qLines.length > 0 || buf.optLines.length > 0) {
+      buf.qLines.push(line);
+    } else {
+      // Orphan line - might be answer continuation for SA
+      buf.qLines.push(line);
     }
   }
-  if (buf.length > 0) chunks.push({ lines: buf, type: bufType });
+  pushChunk();
 
-  // ── Step 4: Parse each chunk ──
+  // ── Build questions from chunks ──
   const questions = [];
   let qNum = 0;
 
-  // ── Post-process: merge split-apart question fragments ──
-  // Any chunk not starting with a question number (and not a section header)
-  // gets merged into the previous chunk
-  const isSection = l => /^[一二三四五六七八九十]+[、.．]/.test(l) && /(?:单|多|判|填|简)/i.test(l);
-  for (let ci = chunks.length - 1; ci >= 1; ci--) {
-    const prev = chunks[ci - 1];
-    const curr = chunks[ci];
-    if (curr.lines.length === 0 || isSection(curr.lines[0].trim())) continue;
-    if (prev.lines.length === 0 || isSection(prev.lines[0].trim())) continue;
-    const currHasNum = /^\d+[、.．)\s]/.test(curr.lines[0].trim());
-    if (!currHasNum) {
-      prev.lines.push(...curr.lines);
-      chunks.splice(ci, 1);
-    }
-  }
-
-  // ── Post-process B: merge orphan answer chunks into previous question ──
-  const mergedChunks = [];
   for (let ci = 0; ci < chunks.length; ci++) {
     const chunk = chunks[ci];
-    const allText = chunk.lines.join(' ').trim();
-    const isOrphanAnswer = /^(?:答案|正确答案|正确选项|参考答案)[：:\s为是]/.test(allText) || /^[A-H]$/i.test(allText);
-    if (isOrphanAnswer && mergedChunks.length > 0) {
-      mergedChunks[mergedChunks.length - 1].lines.push(...chunk.lines);
-    } else {
-      mergedChunks.push(chunk);
-    }
-  }
 
-  for (const chunk of mergedChunks) {
-    if (chunk.lines.length === 0) continue;
-    const first = chunk.lines[0].trim();
-
-    // Skip section headers
-    if (/^[一二三四五六七八九十]+[、.．]/.test(first) &&
-        /(?:单|多|判|填|简)/i.test(first)) continue;
-
-    const qType = chunk.type;
-    const compact = chunk.lines.join(' ');
-
-    // ── Extract answer ──
-    let answer = null;
-
-    // A: Explicit answer markers (handle 答案：X, 答案 X, 答案 错, 答案 错（原因）)
-    let ansM = compact.match(/(?:答案|正确答案|正确选项|参考答案)[：:\s]\s*(.+?)(?=\s*(?:解析|解释)[：:]|\s*$)/);
-    if (!ansM) {
-      // Try: 答案为B / 答案是C
-      ansM = compact.match(/(?:答案[为是])\s*([A-H])\b/);
-      if (ansM) answer = ansM[1].trim();
-    } else {
-      answer = ansM[1].trim();
-    }
-
-    // Strip answer from all lines in chunk so it won't appear in question text
-    if (answer !== null) {
-      for (let li = 0; li < chunk.lines.length; li++) {
-        chunk.lines[li] = chunk.lines[li].replace(/(?:答案|正确答案|正确选项|参考答案)[：:\s为是]\s*.+$/, '').trim();
-      }
-      // Remove empty lines caused by stripping
-      chunk.lines = chunk.lines.filter(l => l.length > 0);
-      if (chunk.lines.length === 0) continue;
-    }
-
-    // B: Standalone letter after options (last meaningful line)
-    if (!answer) {
-      for (let i = chunk.lines.length - 1; i >= 0; i--) {
-        const ln = chunk.lines[i].trim();
-        if (/^[A-H]$/i.test(ln)) { answer = ln.toUpperCase(); break; }
-        if (ln.length > 0 && !/^答案/.test(ln)) break; // only match immediate last line
-      }
-    }
-
-    // C: Tab last column
-    if (!answer && hasTabs && first.includes('\t')) {
-      const cols = first.split('\t').map(c => c.trim());
-      const lc = cols[cols.length - 1];
-      if (/^[A-H]$/i.test(lc)) answer = lc.toUpperCase();
-    }
-
-    // D: Inline bracket ( B )
-    if (!answer) {
-      const bm = first.match(/[（(]\s*([A-H]+)\s*[）)]/);
-      if (bm) answer = bm[1];
-    }
-
-    // ── Extract options ──
-    let options = [];
-
-    // Helper: strip trailing inline options from option text
-    const cleanOptText = (txt) => {
-      const m = txt.search(/\s*[A-H][.、．)\s]+/);
-      return m > 0 ? txt.substring(0, m).trim() : txt.trim();
-    };
-
-    // Strategy A: Per-line options
-    for (let li = 0; li < chunk.lines.length; li++) {
-      const ln = chunk.lines[li].trim();
-      const pm = ln.match(/^([A-H])[.、．)\s]+(.+)/);
-      if (pm) { options.push({ letter: pm[1], text: cleanOptText(pm[2]) }); continue; }
-      // Letter on one line, text on next line (e.g., "A\nxxx")
-      if (/^[A-H]$/i.test(ln) && li + 1 < chunk.lines.length) {
-        const nextLn = chunk.lines[li + 1].trim();
-        if (nextLn && !/^[A-H]$/i.test(nextLn)
-            && !/^答案/.test(nextLn) && !/^解析/.test(nextLn)) {
-          // If next line contains other option markers (B. C. etc.), only take text before the first one
-          let optText = nextLn;
-          const trailingOpts = optText.search(/\s*[A-H][.、．)\s]+/);
-          if (trailingOpts > 0) {
-            optText = optText.substring(0, trailingOpts).trim();
-          }
-          if (optText) options.push({ letter: ln.toUpperCase(), text: cleanOptText(optText) });
-          li++; // skip next line
+    // Answer-only chunk: try to merge into previous, or create standalone question
+    if (chunk.qLines.length === 0 && chunk.optLines.length === 0 && chunk.ansLine) {
+      if (questions.length > 0) {
+        const prev = questions[questions.length - 1];
+        if (prev.type === 'fillblank' || prev.type === 'shortanswer') {
+          prev.answerText[0] = (prev.answerText[0] + ' ' + chunk.ansLine).trim();
+          continue;
         }
       }
-    }
-
-    // Strategy B: Compact inline in any line
-    if (options.length < 2) {
-      for (const ln of chunk.lines) {
-        const ao = ln.trim().match(/[A-H][.、．)\s]+\S+/g);
-        if (ao && ao.length >= 2) {
-          const parts = ln.trim().split(/\s*(?=[A-H][.、．)\s]+)/);
-          for (const part of parts) {
-            const pm = part.match(/^([A-H])[.、．)\s]+(.+)/);
-            if (pm) options.push({ letter: pm[1], text: cleanOptText(pm[2]) });
-          }
-          if (options.length >= 2) break;
-        }
-      }
-    }
-
-    // Strategy C: Tab columns
-    if (options.length < 2 && hasTabs && first.includes('\t')) {
-      const cols = first.split('\t').map(c => c.trim());
-      const endCol = (answer && /^[A-H]$/i.test(cols[cols.length - 1])) ? cols.length - 1 : cols.length;
-      for (let ci = 2; ci < endCol; ci++) {
-        const c = cols[ci];
-        const pm = c.match(/^([A-H])[.、．)\s]?(.+)/);
-        if (pm) options.push({ letter: pm[1], text: pm[2].trim() });
-        else if (/^[A-H]$/.test(c)) options.push({ letter: c, text: c });
-      }
-    }
-
-    // Re-read first line after answer stripping
-    const firstClean = chunk.lines[0].trim();
-
-    // ── Extract question text ──
-    let qText = firstClean.replace(/^\d+[.、．)\s]+/, '').trim();
-
-    // If options exist inline in qText, split them out
-    if (options.length >= 2) {
-      for (const opt of options) {
-        const esc = opt.letter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const re = new RegExp(esc + '[.、．)\\s]');
-        const m = qText.match(re);
-        if (m && m.index !== undefined && m.index > 0) {
-          qText = qText.substring(0, m.index).trim();
-          break;
-        }
-      }
-    }
-
-    // Clean: remove trailing lone letter
-    qText = qText.replace(/\s*[A-H]\s*$/, '').trim();
-
-    // ── Determine type ──
-    let finalType = qType;
-
-    // True/false from options
-    if (options.length === 2) {
-      const t = options.map(o => o.text);
-      if ((t[0] === '正确' || t[0] === '对' || t[0] === '√') &&
-          (t[1] === '错误' || t[1] === '错' || t[1] === '×')) {
-        finalType = 'truefalse';
-      }
-    }
-
-    // Multi from answer
-    if (finalType === 'single' && answer) {
-      const ca = answer.replace(/[,，、\s]+/g, '').toUpperCase();
-      if (ca.length > 1 && /^[A-Z]+$/.test(ca)) finalType = 'multiple';
-    }
-
-    // True/false auto-options
-    if (qType === 'truefalse' && options.length < 2) {
-      options = [{ letter: 'A', text: '正确' }, { letter: 'B', text: '错误' }];
-    }
-
-    // If fillblank/fillblank section but question actually has options, treat as choice
-    if ((finalType === 'fillblank' || finalType === 'shortanswer') && options.length >= 2) {
-      finalType = 'single';
-    }
-
-    // Fillblank / fillblank
-    if (finalType === 'fillblank' || finalType === 'shortanswer') {
-      // For shortanswer without 答案：, extract question from first line,
-      // answer from everything after the first blank line separator
-      let ansText = answer || '';
-      if (!ansText && chunk.lines.length > 1) {
-        // Find first blank line — everything after is answer, before is question
-        let ansStart = 1;
-        for (let li = 1; li < chunk.lines.length; li++) {
-          if (chunk.lines[li].trim() === '' && li + 1 < chunk.lines.length) {
-            ansStart = li + 1;
-            break;
-          }
-        }
-        ansText = chunk.lines.slice(ansStart).filter(l => l.trim()).join('\n').trim();
-        // Question text might span until blank line
-        if (ansStart > 1 && !qText) {
-          qText = chunk.lines.slice(0, ansStart).join(' ').replace(/^\d+[、.．)\s]+/, '').trim();
-        }
+      // Create standalone question with auto-generated options (for true/false)
+      const na = normalizeAnswer(chunk.ansLine);
+      const fa = na || [0];
+      let opts = [];
+      if (chunk.type === 'truefalse') {
+        opts = [{ letter: 'A', text: '正确' }, { letter: 'B', text: '错误' }];
       }
       qNum++;
       questions.push({
-        id: qNum, type: finalType, text: qText || firstClean,
+        id: qNum, type: chunk.type === 'truefalse' ? 'truefalse' : 'single',
+        text: '(题目)', options: opts, answer: fa, explanation: ''
+      });
+      continue;
+    }
+
+    // No question text and no options → skip
+    const qType = chunk.type;
+    if (!chunk.qLines.join(' ').trim() && chunk.optLines.length === 0 && !chunk.ansLine) continue;
+
+    // Merge question text from qLines (remove numbering from first line)
+    // For fillblank/shortanswer, only first line is the question; rest is answer
+    let qText = '';
+    if (chunk.qLines.length > 0) {
+      if (qType === 'fillblank' || qType === 'shortanswer') {
+        qText = chunk.qLines[0].replace(/^\d+[、.．)\s]+/, '').trim();
+      } else {
+        qText = chunk.qLines.join(' ').replace(/^\d+[、.．)\s]+/, '').trim();
+      }
+    }
+
+    // ── Determine answer ──
+    let answer = chunk.ansLine;
+    // Check next chunk for orphan answer
+    if (!answer && ci + 1 < chunks.length) {
+      const next = chunks[ci + 1];
+      if (next.qLines.length === 0 && next.optLines.length === 0 && next.ansLine) {
+        answer = next.ansLine;
+        ci++; // consume next chunk
+      }
+    }
+
+    // ── Fillblank / Shortanswer ──
+    if (qType === 'fillblank' || qType === 'shortanswer') {
+      // For SA without explicit answer, remaining qLines after first line are answer
+      let ansText = answer || '';
+      if (!ansText && chunk.qLines.length > 1) {
+        ansText = chunk.qLines.slice(1).join(' ').trim();
+      }
+      qNum++;
+      questions.push({
+        id: qNum, type: qType,
+        text: qText || chunk.qLines[0] || '(题目内容)',
         options: [], answer: [0], answerText: [ansText], explanation: ''
       });
       continue;
     }
 
-    // Auto fillblank: no options but has text answer
-    if (options.length === 0 && answer && finalType === 'single') {
+    // ── Build options ──
+    let options = chunk.optLines.map((o, i) => ({
+      letter: LETTERS[i],
+      text: o.text || o.letter
+    }));
+
+    // Compact inline option handling: "A xxxB yyyC zzzD www"
+    if (options.length === 0 && qText) {
+      const inlineOpts = qText.match(/[A-H][.、:．）)\s]+\s*.+?(?=[A-H][.、:．）)\s]+|$)/g);
+      if (inlineOpts && inlineOpts.length >= 2) {
+        const parts = qText.split(/\s*(?=[A-H][.、:．）)\s]+)/);
+        const firstPart = parts.shift() || '';
+        qText = firstPart.trim();
+        const inlineOptions = [];
+        for (const part of parts) {
+          const pm = part.match(/^([A-H])[.、:．）)\s]+\s*(.+)/);
+          if (pm) inlineOptions.push({ letter: pm[1], text: pm[2].trim() });
+        }
+        if (inlineOptions.length >= 2) {
+          options = inlineOptions.map((o, i) => ({ letter: LETTERS[i], text: o.text }));
+        }
+      }
+    }
+
+    // True/false auto-generate options
+    if (qType === 'truefalse' && options.length === 0) {
+      options = [
+        { letter: 'A', text: '正确' },
+        { letter: 'B', text: '错误' }
+      ];
+    }
+
+    // Auto-detect truefalse from options
+    if (options.length === 2) {
+      const texts = options.map(o => o.text);
+      if ((texts[0] === '正确' || texts[0] === '对') &&
+          (texts[1] === '错误' || texts[1] === '错')) {
+        // already truefalse
+      }
+    }
+
+    // ── Validate ──
+    // Auto-fillblank: no options, has text answer
+    if (options.length === 0 && answer && qType === 'single') {
       qNum++;
       questions.push({
-        id: qNum, type: 'fillblank', text: qText || firstClean,
+        id: qNum, type: 'fillblank', text: qText || '(题目内容)',
         options: [], answer: [0], answerText: [answer], explanation: ''
       });
       continue;
@@ -1493,26 +1406,138 @@ function parseTextFormat (text) {
 
     if (options.length < 2) continue;
 
-    // Build question
-    const na = normalizeAnswer(answer);
-    const fa = na || [0];
-    const co = options.map((o, i) => ({
-      letter: LETTERS[i],
-      text: o.text.replace(/^[A-H][.、．)\s]+/, '').trim()
-    }));
+    // Parse answer → indices
+    const normalizedAns = normalizeAnswer(answer);
+    const finalAnswer = normalizedAns || [0];
+
+    // Validate: answer letters must exist in options
+    const validAnswer = finalAnswer.every(idx => idx >= 0 && idx < options.length);
+    if (!validAnswer) continue;
+
+    // Determine final type
+    let finalType = qType;
+    if (finalType === 'truefalse' && options.length >= 2) finalType = 'truefalse';
+    else if (finalType === 'multiple') finalType = 'multiple';
+    else if (finalType === 'single' && answer) {
+      const cleaned = answer.replace(/[,，、\s]+/g, '').toUpperCase();
+      if (cleaned.length > 1 && /^[A-Z]+$/.test(cleaned)) finalType = 'multiple';
+    }
 
     qNum++;
     questions.push({
-      id: qNum, type: finalType, text: qText || '(题目内容)',
-      options: co, answer: fa, explanation: ''
+      id: qNum, type: finalType,
+      text: qText || '(题目内容)',
+      options: options,
+      answer: finalAnswer,
+      explanation: ''
     });
   }
 
   return questions;
 }
 
+// ── Module 4: validate_question ──
+function validate_question(q) {
+  const errors = [];
 
-// ═══════════════════════════════════════
+  // Basic: question text non-empty
+  if (!q.text || q.text.trim().length === 0) {
+    errors.push(`题目${q.id}: 题干为空`);
+  }
+
+  // Basic: options non-empty
+  if (q.type !== 'fillblank' && q.type !== 'shortanswer') {
+    if (q.options.length === 0) {
+      errors.push(`题目${q.id}: 无选项`);
+    } else {
+      for (const o of q.options) {
+        if (!o.text || o.text.trim().length === 0) {
+          errors.push(`题目${q.id}: 选项${o.letter}内容为空`);
+        }
+      }
+    }
+
+    // Letter check: strictly sequential A→B→C...
+    if (q.options.length > 0) {
+      const expected = q.options.map((_, i) => LETTERS[i]).join(',');
+      const actual = q.options.map(o => o.letter).join(',');
+      if (expected !== actual) {
+        errors.push(`题目${q.id}: 选项编号不连续，期望${expected}，实际${actual}`);
+      }
+
+      // Duplicate check
+      const texts = q.options.map(o => o.text.trim());
+      const seen = {};
+      for (let i = 0; i < texts.length; i++) {
+        if (seen[texts[i]] !== undefined) {
+          errors.push(`题目${q.id}: 选项${LETTERS[seen[texts[i]]]}和${LETTERS[i]}内容重复("${texts[i]}")`);
+          break;
+        }
+        seen[texts[i]] = i;
+      }
+    }
+
+    // Answer validation
+    const ansIndices = q.answer || [];
+    for (const idx of ansIndices) {
+      if (idx < 0 || idx >= q.options.length) {
+        errors.push(`题目${q.id}: 答案索引${idx}超出选项范围(0-${q.options.length - 1})`);
+      }
+    }
+    if (q.type === 'single' && ansIndices.length !== 1) {
+      errors.push(`题目${q.id}: 单选题答案数量应为1，实际为${ansIndices.length}`);
+    }
+    if (q.type === 'multiple' && ansIndices.length < 2) {
+      errors.push(`题目${q.id}: 多选题答案数量应≥2，实际为${ansIndices.length}`);
+    }
+  }
+
+  if (errors.length > 0) {
+    console.warn('[校验异常]', errors.join('; '));
+    return { valid: false, errors };
+  }
+  return { valid: true, errors: [] };
+}
+
+// ── Main entry: parseTextFormat ──
+function parseTextFormat(text) {
+  // 1. Clean
+  const lines = clean_raw_text(text);
+  if (lines.length === 0) return [];
+
+  // 2. Assemble
+  const questions = assemble_questions(lines);
+
+  // 3. Validate (log failures, don't block)
+  let validCount = 0, invalidCount = 0;
+  const validQuestions = [];
+  for (const q of questions) {
+    const result = validate_question(q);
+    if (result.valid) {
+      validQuestions.push(q);
+      validCount++;
+    } else {
+      invalidCount++;
+    }
+  }
+
+  console.log(`[解析完成] 总行数:${lines.length} 题目数:${questions.length} 有效:${validCount} 无效:${invalidCount}`);
+  if (invalidCount > 0) {
+    console.warn(`[解析异常] ${invalidCount}道题目校验未通过，已跳过`);
+  }
+
+  return validQuestions;
+}
+
+function parseQuestions(rawText) {
+  const text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if (!text) return [];
+  // Try JSON first
+  const jsonResult = tryParseJSON(text);
+  if (jsonResult) return jsonResult;
+  return parseTextFormat(text);
+}
+
 //  File Handling
 // ═══════════════════════════════════════
 const dropZone = $('#dropZone');
