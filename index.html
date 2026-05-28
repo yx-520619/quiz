@@ -1204,7 +1204,7 @@ function assemble_questions(lines) {
   }
 
   // Pre-process: split lines that mammoth merged (missing paragraph breaks)
-  // Pattern: sentence-end punctuation followed by a question number
+  // Pass 1: sentence-end punctuation followed by a question number
   const expanded = [];
   for (const line of lines) {
     const parts = line.split(/(?<=[。！？.!?])\s*(?=\d{1,4}[、.．)\s][^\d\s])/);
@@ -1213,7 +1213,34 @@ function assemble_questions(lines) {
       if (t) expanded.push(t);
     }
   }
-  lines = expanded;
+
+  // Pass 2: answer→question merges without sentence-end punctuation
+  // "答案：C 312、" → "答案：C" + "312、"; "答案为ACD 313、" → "答案为ACD" + "313、"
+  const expanded2 = [];
+  for (const line of expanded) {
+    const re = /^(.*?(?:答案|正确答案|正确选项|参考答案|答)[：:\s]\s*[^\s（(]+?)\s+(\d{1,4}[、.．)\s][^\d\s].*)$/;
+    const m = line.match(re);
+    if (m) {
+      const t1 = m[1].trim();
+      const t2 = m[2].trim();
+      if (t1) expanded2.push(t1);
+      if (t2) expanded2.push(t2);
+    } else {
+      expanded2.push(line);
+    }
+  }
+
+  // Pass 3: Chinese-char/letter→question merges without any sentence-end punctuation
+  // "文本 312、" → "文本" + "312、"; handles content merged across paragraph breaks
+  const expanded3 = [];
+  for (const line of expanded2) {
+    const parts = line.split(/(?<=[一-鿿A-Ha-h0-9])\s+(?=\d{1,4}[、.．)\s][^\d\s])/);
+    for (const part of parts) {
+      const t = part.trim();
+      if (t) expanded3.push(t);
+    }
+  }
+  lines = expanded3;
 
   let currentType = 'single';
   const chunks = []; // [{type, qLines: [], optLines: [{letter,text}], ansLine: null}]
@@ -1497,7 +1524,31 @@ function assemble_questions(lines) {
       continue;
     }
 
-    if (options.length < 2) continue;
+    // ── Options check & recovery (don't silently drop) ──
+    if (options.length < 2) {
+      if (options.length === 1) {
+        // Single option only — likely format artifact, keep the question
+        console.warn('[Parser] Q#' + (qNum+1) + ': only 1 option, kept as degraded', qText.substring(0,50));
+      } else if (options.length === 0 && answer) {
+        // No options but has text answer → fillblank
+        qNum++;
+        questions.push({
+          id: qNum, type: 'fillblank', text: qText || '(题目内容)',
+          options: [], answer: [0], answerText: [answer], explanation: ''
+        });
+      } else {
+        console.warn('[Parser] Q#' + (qNum+1) + ': 0 options, no answer — dropped', qText.substring(0,50));
+      }
+      if (options.length === 1) {
+        // Save with what we have
+        qNum++;
+        questions.push({
+          id: qNum, type: qType, text: qText || '(题目内容)',
+          options: options, answer: [0], explanation: ''
+        });
+      }
+      continue;
+    }
 
     // Parse answer → indices
     const normalizedAns = normalizeAnswer(answer);
@@ -1505,7 +1556,25 @@ function assemble_questions(lines) {
 
     // Validate: answer letters must exist in options
     const validAnswer = finalAnswer.every(idx => idx >= 0 && idx < options.length);
-    if (!validAnswer) continue;
+    if (!validAnswer) {
+      console.warn('[Parser] Q#' + (qNum+1) + ': answer index invalid, ans="' + answer + '", opts=' + options.length, qText.substring(0,50));
+      // Try text-answer fallback (e.g. "正确"/"错误" as fillblank answer)
+      if (answer && !/^[A-H\s,，、]+$/i.test(answer)) {
+        qNum++;
+        questions.push({
+          id: qNum, type: 'fillblank', text: qText || '(题目内容)',
+          options: [], answer: [0], answerText: [answer], explanation: ''
+        });
+      } else {
+        // Keep anyway with answer [0]
+        qNum++;
+        questions.push({
+          id: qNum, type: qType, text: qText || '(题目内容)',
+          options: options, answer: [0], explanation: ''
+        });
+      }
+      continue;
+    }
 
     // Determine final type
     let finalType = qType;
@@ -1525,6 +1594,11 @@ function assemble_questions(lines) {
       explanation: ''
     });
   }
+
+  // Debug summary
+  const counts = {};
+  for (const q of questions) { counts[q.type] = (counts[q.type] || 0) + 1; }
+  console.log('[Parser] Total parsed:', questions.length, counts);
 
   return questions;
 }
