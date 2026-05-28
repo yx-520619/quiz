@@ -1240,7 +1240,29 @@ function assemble_questions(lines) {
       if (t) expanded3.push(t);
     }
   }
-  lines = expanded3;
+  // Pass 4: split at question-number boundaries after answer content
+  // "669、...答案：错（解释）670、...答案：对" → two lines
+  const expanded4 = [];
+  for (const line of expanded3) {
+    const qNumRe = /\d{1,4}[、.．)\s](?=[^\d\s])/g;
+    const qNums = [...line.matchAll(qNumRe)];
+    if (qNums.length <= 1) {
+      expanded4.push(line);
+    } else {
+      let lastIdx = 0;
+      for (let qi = 1; qi < qNums.length; qi++) {
+        const pos = qNums[qi].index;
+        const seg = line.substring(lastIdx, pos).trim();
+        if (seg && /(?:答案|正确答案|正确选项|参考答案|答)[：:\s]/.test(seg)) {
+          if (seg) expanded4.push(seg);
+          lastIdx = pos;
+        }
+      }
+      const tail = line.substring(lastIdx).trim();
+      if (tail) expanded4.push(tail);
+    }
+  }
+  lines = expanded4;
 
   let currentType = 'single';
   const chunks = []; // [{type, qLines: [], optLines: [{letter,text}], ansLine: null}]
