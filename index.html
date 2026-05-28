@@ -1204,6 +1204,18 @@ function assemble_questions(lines) {
     lines = lines.slice(firstSectionIdx);
   }
 
+  // Pre-process: split lines that mammoth merged (missing paragraph breaks)
+  // Pattern: sentence-end punctuation followed by a question number
+  const expanded = [];
+  for (const line of lines) {
+    const parts = line.split(/(?<=[。！？.!?])\s*(?=\d{1,4}[、.．)\s][^\d\s])/);
+    for (const part of parts) {
+      const t = part.trim();
+      if (t) expanded.push(t);
+    }
+  }
+  lines = expanded;
+
   let currentType = 'single';
   const chunks = []; // [{type, qLines: [], optLines: [{letter,text}], ansLine: null}]
   let buf = { type: 'single', qLines: [], optLines: [], ansLine: null };
