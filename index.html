@@ -1280,7 +1280,14 @@ function assemble_questions(lines) {
         continue;
       }
       buf.ansLine = ansValue;
-      if (preAns && buf.qLines.length > 0) {
+      // If preAns looks like options (e.g. "B 警告C 严重警告D撤销..."), extract them
+      if (preAns && /^[A-H]\s*\S/.test(preAns)) {
+        const optRE = /([A-H])\s*[.、:．）)]?\s*([^A-H]+?)(?=\s*[A-H]|$)/g;
+        let om;
+        while ((om = optRE.exec(preAns)) !== null) {
+          buf.optLines.push({ letter: om[1], text: om[2].trim() || om[1], pending: false });
+        }
+      } else if (preAns && buf.qLines.length > 0) {
         buf.qLines.push(preAns);
       } else if (preAns && buf.qLines.length === 0) {
         buf.qLines.push(preAns);
@@ -1459,70 +1466,38 @@ function assemble_questions(lines) {
     }
 
     // ── Build options ──
-    let options = chunk.optLines.map((o, i) => ({
-      letter: LETTERS[i],
+    // Preserve original option letters (don't re-letter with LETTERS[i])
+    let options = chunk.optLines.map(o => ({
+      letter: o.letter,
       text: o.text || o.letter
     }));
 
-    // Inline option extraction from qText — always try, merge with optLines
+    // Inline option extraction: unified no-separator approach catches ALL formats
+    // "A 选项A" (with space), "A.选项A" (with dot), "A记大过" (no separator) all work
+    // Runs on original qText BEFORE any cleaning, then merges with optLines
     if (qText) {
-      const inlineOpts = qText.match(/[A-H][.、:．）)\s]+\s*.+?(?=[A-H][.、:．）)\s]+|$)/g);
-      if (inlineOpts && inlineOpts.length >= 2) {
-        const parts = qText.split(/\s*(?=[A-H][.、:．）)\s]+)/);
-        const cleanQText = (parts.shift() || '').trim();
-        const inlineOptions = [];
-        for (const part of parts) {
-          const pm = part.match(/^([A-H])[.、:．）)\s]+\s*(.+)/);
-          if (pm) inlineOptions.push({ letter: pm[1], text: pm[2].trim() });
-        }
-        if (inlineOptions.length >= 2) {
-          if (options.length === 0) {
-            options = inlineOptions.map((o, i) => ({ letter: LETTERS[i], text: o.text }));
-            qText = cleanQText;
-          } else {
-            // Merge: add inline options not already in optLines
-            const existLetters = new Set(options.map(o => o.letter));
-            let added = false;
-            for (const io of inlineOptions) {
-              if (!existLetters.has(io.letter)) {
-                options.push(io);
-                existLetters.add(io.letter);
-                added = true;
-              }
-            }
-            if (added) {
-              options = options.map((o, i) => ({ letter: LETTERS[i], text: o.text }));
-              qText = cleanQText;
-            }
+      const origQText = qText;
+      const existLetters = new Set(options.map(o => o.letter));
+      const noSepRE = /([A-H])([^A-H]+?)(?=[A-H]|答案|$)/g;
+      let nm;
+      while ((nm = noSepRE.exec(origQText)) !== null) {
+        const letter = nm[1];
+        if (!existLetters.has(letter)) {
+          const rawText = nm[2].trim();
+          const cleanText = rawText.replace(/^[.、:．）)\s]+/, '').trim();
+          if (cleanText.length >= 1) {
+            options.push({ letter, text: cleanText });
+            existLetters.add(letter);
           }
         }
       }
+      // Clean qText: strip everything from first option letter onwards
+      const firstIdx = origQText.search(noSepRE);
+      if (firstIdx > 0) qText = origQText.substring(0, firstIdx).trim();
     }
 
-    // No-separator inline option fallback: "A记大过B严重警告C撤销党内职务"
-    // Runs when regular inline extraction found nothing or only separator-based options
-    if (options.length < 2 && qText) {
-      const noSepRE = /([A-H])([^A-H]+?)(?=[A-H]|$)/g;
-      const noSepOpts = [];
-      let nm;
-      while ((nm = noSepRE.exec(qText)) !== null) {
-        const t = nm[2].trim();
-        if (t.length >= 1) noSepOpts.push({ letter: nm[1], text: t });
-      }
-      if (noSepOpts.length >= 2) {
-        const firstIdx = qText.search(/([A-H])([^A-H]+?)(?=[A-H]|$)/);
-        if (firstIdx > 0) qText = qText.substring(0, firstIdx).trim();
-        if (options.length === 0) {
-          options = noSepOpts.map((o, i) => ({ letter: LETTERS[i], text: o.text }));
-        } else {
-          const existLetters = new Set(options.map(o => o.letter));
-          for (const io of noSepOpts) {
-            if (!existLetters.has(io.letter)) { options.push(io); existLetters.add(io.letter); }
-          }
-          options = options.map((o, i) => ({ letter: LETTERS[i], text: o.text }));
-        }
-      }
-    }
+    // Sort options by letter (A, B, C, ...) for correct index mapping
+    options.sort((a, b) => a.letter.localeCompare(b.letter));
 
     // True/false auto-generate options — check for fillblank markers first
     if (qType === 'truefalse' && options.length === 0) {
