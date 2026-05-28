@@ -1424,20 +1424,37 @@ function assemble_questions(lines) {
       text: o.text || o.letter
     }));
 
-    // Compact inline option handling: "A xxxB yyyC zzzD www"
-    if (options.length === 0 && qText) {
+    // Inline option extraction from qText — always try, merge with optLines
+    if (qText) {
       const inlineOpts = qText.match(/[A-H][.、:．）)\s]+\s*.+?(?=[A-H][.、:．）)\s]+|$)/g);
       if (inlineOpts && inlineOpts.length >= 2) {
         const parts = qText.split(/\s*(?=[A-H][.、:．）)\s]+)/);
-        const firstPart = parts.shift() || '';
-        qText = firstPart.trim();
+        const cleanQText = (parts.shift() || '').trim();
         const inlineOptions = [];
         for (const part of parts) {
           const pm = part.match(/^([A-H])[.、:．）)\s]+\s*(.+)/);
           if (pm) inlineOptions.push({ letter: pm[1], text: pm[2].trim() });
         }
         if (inlineOptions.length >= 2) {
-          options = inlineOptions.map((o, i) => ({ letter: LETTERS[i], text: o.text }));
+          if (options.length === 0) {
+            options = inlineOptions.map((o, i) => ({ letter: LETTERS[i], text: o.text }));
+            qText = cleanQText;
+          } else {
+            // Merge: add inline options not already in optLines
+            const existLetters = new Set(options.map(o => o.letter));
+            let added = false;
+            for (const io of inlineOptions) {
+              if (!existLetters.has(io.letter)) {
+                options.push(io);
+                existLetters.add(io.letter);
+                added = true;
+              }
+            }
+            if (added) {
+              options = options.map((o, i) => ({ letter: LETTERS[i], text: o.text }));
+              qText = cleanQText;
+            }
+          }
         }
       }
     }
