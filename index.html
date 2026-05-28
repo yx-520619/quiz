@@ -1316,7 +1316,7 @@ function assemble_questions(lines) {
 
     // Auto-detect fillblank from blank markers BEFORE qText computation
     const rawJoin = chunk.qLines.join(' ');
-    if (qType !== 'shortanswer' && /_{2,}|＿{2,}|（\s*）|\(\s*\)|\S\s{4,}\S/.test(rawJoin)) {
+    if (qType !== 'shortanswer' && /_{2,}|＿{2,}|（\s+）|\(\s+\)/.test(rawJoin)) {
       qType = 'fillblank';
     }
 
