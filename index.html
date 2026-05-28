@@ -1311,8 +1311,14 @@ function assemble_questions(lines) {
     }
 
     // No question text and no options → skip
-    const qType = chunk.type;
+    let qType = chunk.type;
     if (!chunk.qLines.join(' ').trim() && chunk.optLines.length === 0 && !chunk.ansLine) continue;
+
+    // Auto-detect fillblank from blank markers BEFORE qText computation
+    const rawJoin = chunk.qLines.join(' ');
+    if (qType !== 'shortanswer' && /_{2,}|（\s*）|\(\s*\)/.test(rawJoin)) {
+      qType = 'fillblank';
+    }
 
     // Merge question text from qLines (remove numbering from first line)
     // For fillblank/shortanswer, only first line is the question; rest is answer
