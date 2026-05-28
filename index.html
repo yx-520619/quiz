@@ -1316,8 +1316,21 @@ function assemble_questions(lines) {
     // Option line
     const opt = match_option_line(line);
     if (opt.isOption) {
-      // Check if this looks like a new question starting (letter with long text after)
-      // Only add option if we already have question content
+      // Split multi-option lines: "A记大过B严重警告C撤销党内职务" → A,B,C,D,E
+      // Mammoth often merges all options into one line without separators
+      const multiRE = /([A-H])([^A-H]*)/g;
+      const allOpts = [];
+      let mm;
+      while ((mm = multiRE.exec(line)) !== null) {
+        const rawText = mm[2].trim();
+        const cleanText = rawText.replace(/^[.、:．）)\s]+/, '').trim();
+        allOpts.push({ letter: mm[1], text: cleanText || mm[1], pending: false });
+      }
+      if (allOpts.length > 1) {
+        for (const o of allOpts) { buf.optLines.push(o); }
+        continue;
+      }
+      // Single option
       if (buf.qLines.length === 0 && buf.optLines.length > 0) {
         // Continue previous option group
       }
@@ -1486,7 +1499,32 @@ function assemble_questions(lines) {
       }
     }
 
-    // True/false auto-generate options — but check for fillblank markers first
+    // No-separator inline option fallback: "A记大过B严重警告C撤销党内职务"
+    // Runs when regular inline extraction found nothing or only separator-based options
+    if (options.length < 2 && qText) {
+      const noSepRE = /([A-H])([^A-H]+?)(?=[A-H]|$)/g;
+      const noSepOpts = [];
+      let nm;
+      while ((nm = noSepRE.exec(qText)) !== null) {
+        const t = nm[2].trim();
+        if (t.length >= 1) noSepOpts.push({ letter: nm[1], text: t });
+      }
+      if (noSepOpts.length >= 2) {
+        const firstIdx = qText.search(/([A-H])([^A-H]+?)(?=[A-H]|$)/);
+        if (firstIdx > 0) qText = qText.substring(0, firstIdx).trim();
+        if (options.length === 0) {
+          options = noSepOpts.map((o, i) => ({ letter: LETTERS[i], text: o.text }));
+        } else {
+          const existLetters = new Set(options.map(o => o.letter));
+          for (const io of noSepOpts) {
+            if (!existLetters.has(io.letter)) { options.push(io); existLetters.add(io.letter); }
+          }
+          options = options.map((o, i) => ({ letter: LETTERS[i], text: o.text }));
+        }
+      }
+    }
+
+    // True/false auto-generate options — check for fillblank markers first
     if (qType === 'truefalse' && options.length === 0) {
       if (/_{2,}|＿{2,}/.test(qText)) {
         // Question has blank markers → should be fillblank, not true/false
