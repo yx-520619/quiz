@@ -1227,7 +1227,8 @@ function assemble_questions(lines) {
     }
 
     // Answer line: 答案：X / 答：X / 答案 X / 答 X
-    const ansM = line.match(/(?:答案|正确答案|正确选项|参考答案|答)[：:\s](.+)$/i);
+    // Capture only the answer value (first word), not trailing explanations
+    const ansM = line.match(/(?:答案|正确答案|正确选项|参考答案|答)[：:\s]\s*([^\s（(]+)/i);
     if (ansM) {
       const ansValue = ansM[1].trim();
       const preAns = line.substring(0, line.indexOf(ansM[0])).trim();
