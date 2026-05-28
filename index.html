@@ -1502,7 +1502,11 @@ function assemble_questions(lines) {
       const existLetters = new Set(options.map(o => o.letter));
       const noSepRE = /([A-H])([^A-H]+?)(?=[A-H]|答案|$)/g;
       let nm;
+      let firstValidIdx = -1;
       while ((nm = noSepRE.exec(origQText)) !== null) {
+        // Skip if option letter is part of an English abbreviation (e.g. "D" in "GDP")
+        const prevChar = nm.index > 0 ? origQText.charAt(nm.index - 1) : '';
+        if (/[A-Z]/.test(prevChar)) continue;
         const letter = nm[1];
         if (!existLetters.has(letter)) {
           const rawText = nm[2].trim();
@@ -1510,12 +1514,12 @@ function assemble_questions(lines) {
           if (cleanText.length >= 1) {
             options.push({ letter, text: cleanText });
             existLetters.add(letter);
+            if (firstValidIdx < 0) firstValidIdx = nm.index;
           }
         }
       }
-      // Clean qText: strip everything from first option letter onwards
-      const firstIdx = origQText.search(noSepRE);
-      if (firstIdx > 0) qText = origQText.substring(0, firstIdx).trim();
+      // Clean qText: strip everything from first valid option letter onwards
+      if (firstValidIdx > 0) qText = origQText.substring(0, firstValidIdx).trim();
     }
 
     // Sort options by letter (A, B, C, ...) for correct index mapping
