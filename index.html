@@ -1311,14 +1311,8 @@ function assemble_questions(lines) {
     }
 
     // No question text and no options → skip
-    let qType = chunk.type;
+    const qType = chunk.type;
     if (!chunk.qLines.join(' ').trim() && chunk.optLines.length === 0 && !chunk.ansLine) continue;
-
-    // Auto-detect fillblank from blank markers BEFORE qText computation
-    const rawJoin = chunk.qLines.join(' ');
-    if (qType !== 'shortanswer' && /_{2,}|＿{2,}|（\s+）|\(\s+\)/.test(rawJoin)) {
-      qType = 'fillblank';
-    }
 
     // Merge question text from qLines (remove numbering from first line)
     // For fillblank/shortanswer, only first line is the question; rest is answer
@@ -1382,8 +1376,18 @@ function assemble_questions(lines) {
       }
     }
 
-    // True/false auto-generate options
+    // True/false auto-generate options — but check for fillblank markers first
     if (qType === 'truefalse' && options.length === 0) {
+      if (/_{2,}|＿{2,}/.test(qText)) {
+        // Question has blank markers → should be fillblank, not true/false
+        qNum++;
+        questions.push({
+          id: qNum, type: 'fillblank',
+          text: qText || '(题目内容)',
+          options: [], answer: [0], answerText: [answer || ''], explanation: ''
+        });
+        continue;
+      }
       options = [
         { letter: 'A', text: '正确' },
         { letter: 'B', text: '错误' }
